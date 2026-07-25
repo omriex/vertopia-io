@@ -3,7 +3,15 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Vertopia.io v1.0</title>
+    
+    <meta property="og:title" content="Vertopia.io">
+    <meta property="og:description" content="An inspired multiplayer io game">
+    <meta property="og:image" content="https://omriex.github.io/vertopia-io/Vertopia.png">
+    <meta property="og:url" content="https://omriex.github.io/vertopia-io/">
+    <meta name="theme-color" content="#4CAF50">
+    <meta name="twitter:card" content="summary_large_image">
+    
+    <title>Vertopia.io</title>
     <link rel="icon" type="image/png" href="Vertopia.png">
     <style>
         * {
@@ -52,8 +60,16 @@
         h1 {
             color: #ffffff;
             font-size: 4rem;
-            margin-bottom: 20px;
+            margin-bottom: 5px;
             letter-spacing: 2px;
+        }
+
+        .version-text {
+            color: #aaaaaa;
+            font-size: 1rem;
+            font-weight: bold;
+            margin-bottom: 25px;
+            letter-spacing: 1px;
         }
 
         #playerNameInput {
@@ -454,6 +470,7 @@
     <div id="uiLayer">
         <div id="mainMenu">
             <h1>VERTOPIA.IO</h1>
+            <div class="version-text">v1.0.0</div>
             <input type="text" id="playerNameInput" placeholder="Your name" maxlength="15" autocomplete="off">
             <button id="playBtn" disabled>LOADING...</button>
         </div>
