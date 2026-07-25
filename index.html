@@ -419,6 +419,22 @@
         .coord-x { color: #ff4d4d; }
         .coord-y { color: #4da6ff; }
 
+        #perfContainer {
+            display: none;
+            position: absolute;
+            top: 70px;
+            left: 200px;
+            background-color: rgba(0, 0, 0, 0.5);
+            border-radius: 10px;
+            padding: 10px 15px;
+            pointer-events: auto;
+            color: white;
+            font-size: 15px;
+            font-weight: bold;
+            gap: 15px;
+            align-items: center;
+        }
+
         #leaderboardContainer {
             display: none;
             position: absolute;
@@ -461,6 +477,24 @@
         .stat-fill { height: 100%; width: 100%; transition: width 0.1s linear; }
         .health-fill { background-color: #ff3333; }
         .energy-fill { background-color: #ffcc00; }
+
+        #craftingUI {
+            display: none;
+            flex-direction: column;
+            width: max-content;
+            gap: 15px;
+            z-index: 100;
+        }
+        
+        .crafting-grid {
+            display: grid;
+            gap: 10px;
+            justify-content: center;
+        }
+        
+        .craft-4 { grid-template-columns: repeat(2, 60px); }
+        .craft-5 { grid-template-columns: repeat(5, 60px); }
+        .craft-12 { grid-template-columns: repeat(4, 60px); }
     </style>
 </head>
 <body>
@@ -470,7 +504,7 @@
     <div id="uiLayer">
         <div id="mainMenu">
             <h1>VERTOPIA.IO</h1>
-            <div class="version-text">v1.0.2</div>
+            <div class="version-text">v1.0.3</div>
             <input type="text" id="playerNameInput" placeholder="Your name" maxlength="15" autocomplete="off">
             <button id="playBtn" disabled>LOADING...</button>
         </div>
@@ -542,6 +576,41 @@
             </div>
         </div>
 
+        <div id="craftingUI" class="spawn-menu-wrapper">
+            <div style="display: flex; flex-direction: column; align-items: center; width: 100%;">
+                <div class="sm-title">CRAFTING</div>
+                <div class="crafting-grid craft-4">
+                    <div class="inventory-slot"></div>
+                    <div class="inventory-slot"></div>
+                    <div class="inventory-slot"></div>
+                    <div class="inventory-slot"></div>
+                </div>
+                
+                <hr class="sm-hr" style="width: 100%;">
+                
+                <div class="sm-title">INVENTORY</div>
+                <div class="crafting-grid craft-5">
+                    <div class="inventory-slot active"></div>
+                    <div class="inventory-slot"></div>
+                    <div class="inventory-slot"></div>
+                    <div class="inventory-slot"></div>
+                    <div class="inventory-slot"></div>
+                </div>
+                
+                <hr class="sm-hr" style="width: 100%;">
+                
+                <div class="sm-title">BACKPACK</div>
+                <div class="crafting-grid craft-12">
+                    <div class="inventory-slot"></div><div class="inventory-slot"></div>
+                    <div class="inventory-slot"></div><div class="inventory-slot"></div>
+                    <div class="inventory-slot"></div><div class="inventory-slot"></div>
+                    <div class="inventory-slot"></div><div class="inventory-slot"></div>
+                    <div class="inventory-slot"></div><div class="inventory-slot"></div>
+                    <div class="inventory-slot"></div><div class="inventory-slot"></div>
+                </div>
+            </div>
+        </div>
+
         <div id="minimapContainer">
             <div id="minimapDot"></div>
         </div>
@@ -549,6 +618,11 @@
         <div id="coordsContainer">
             <div class="coord-x">X: <span id="coordX">0</span></div>
             <div class="coord-y">Z: <span id="coordZ">0</span></div>
+        </div>
+
+        <div id="perfContainer">
+            <div>FPS: <span id="fpsValue">0</span></div>
+            <div>PING: <span id="pingValue">0</span>ms</div>
         </div>
 
         <div id="leaderboardContainer">
@@ -674,7 +748,7 @@
         const btnCloseSpawnMenu = document.getElementById('smCloseBtn');
         
         const inventory = document.getElementById('inventory');
-        const inventorySlots = document.querySelectorAll('.inventory-slot');
+        const inventorySlots = document.querySelectorAll('#inventory .inventory-slot');
         const nameInput = document.getElementById('playerNameInput');
         const leaderboardContainer = document.getElementById('leaderboardContainer');
         const leaderboardList = document.getElementById('leaderboardList');
@@ -945,6 +1019,7 @@
             minimapContainer.style.display = 'block';
             statsContainer.style.display = 'flex';
             coordsContainer.style.display = 'flex';
+            document.getElementById('perfContainer').style.display = 'flex';
             
             updateLeaderboardUI();
             gameState = 'PLAYING';
@@ -1011,6 +1086,12 @@
             if (e.key === 'Tab') {
                 e.preventDefault(); 
                 if (gameState === 'PLAYING') toggleLeaderboard();
+            }
+            if (key === 'e') {
+                if (gameState === 'PLAYING') {
+                    let ui = document.getElementById('craftingUI');
+                    ui.style.display = (ui.style.display === 'none' || ui.style.display === '') ? 'flex' : 'none';
+                }
             }
             if (gameState === 'PLAYING' && e.key >= '1' && e.key <= '5') {
                 activeSlot = parseInt(e.key) - 1;
@@ -1158,6 +1239,18 @@
             renderSpawnGrid();
         });
 
+        let currentPing = 0;
+        setInterval(() => {
+            if (gameState === 'PLAYING') {
+                let start = performance.now();
+                set(ref(db, `pings/${myPlayerId}`), start).then(() => {
+                    currentPing = Math.round(performance.now() - start);
+                    let pingEl = document.getElementById('pingValue');
+                    if (pingEl) pingEl.innerText = currentPing;
+                }).catch(() => {});
+            }
+        }, 2000);
+
         function update(dt) {
             let zoomLerp = Math.min(10 * dt, 1);
             currentZoom += (targetZoom - currentZoom) * zoomLerp; 
@@ -1179,7 +1272,7 @@
                         let ratio = p.life / p.maxLife;
                         p.alpha = ratio * 1.0; 
                         if (p.isWater) {
-                            p.size = 24 + (1 - ratio) * 48;
+                            p.size = 24 + (1 - ratio) * 60;
                         } else {
                             p.size = ratio * 48; 
                         }
@@ -1241,6 +1334,9 @@
                         player.exhausted = true;
                         player.regenDelay = 5.0;
                     }
+                }
+
+                if (isWater || (isSprinting && isMoving)) {
                     player.particleTimer -= dt;
                     if (player.particleTimer <= 0) {
                         particles.push({
@@ -1252,7 +1348,7 @@
                             maxLife: 0.6,
                             isWater: isWater
                         });
-                        player.particleTimer = 0.35;
+                        player.particleTimer = isWater && !isMoving ? 0.6 : 0.35;
                     }
                 }
 
@@ -1379,7 +1475,7 @@
                         }
                     }
 
-                    if (p.sprint && pIsMoving) {
+                    if (ptIsWater || (p.sprint && pIsMoving)) {
                         if (p.particleTimer <= 0) {
                             particles.push({
                                 x: p.x + r,
@@ -1390,7 +1486,7 @@
                                 maxLife: 0.6,
                                 isWater: ptIsWater
                             });
-                            p.particleTimer = 0.35;
+                            p.particleTimer = ptIsWater && !pIsMoving ? 0.6 : 0.35;
                         }
                     }
                 }
@@ -1519,6 +1615,8 @@
                     ctx.restore();
                 });
 
+                let idleOffset = Math.sin(performance.now() / 400) * 1.5;
+
                 for (let id in otherPlayers) {
                     let p = otherPlayers[id];
                     ctx.save();
@@ -1554,7 +1652,7 @@
 
                     ctx.save();
                     ctx.rotate(p.angle);
-                    ctx.translate(baseHandX + pLeftPunch, -baseHandY + pLeftInward);
+                    ctx.translate(baseHandX + pLeftPunch + idleOffset, -baseHandY + pLeftInward);
                     ctx.rotate(pLeftHandTilt);
                     ctx.drawImage(
                         assets.leftHand,
@@ -1564,7 +1662,7 @@
 
                     ctx.save();
                     ctx.rotate(p.angle);
-                    ctx.translate(baseHandX + pRightPunch, baseHandY + pRightInward);
+                    ctx.translate(baseHandX + pRightPunch + idleOffset, baseHandY + pRightInward);
                     ctx.rotate(pRightHandTilt);
                     ctx.drawImage(
                         assets.rightHand,
@@ -1574,6 +1672,7 @@
 
                     ctx.save();
                     ctx.rotate(p.angle + pHeadTilt);
+                    ctx.translate(idleOffset, 0);
                     ctx.drawImage(
                         assets.playerHead,
                         -player.width / 2, -player.height / 2, player.width, player.height
@@ -1620,7 +1719,7 @@
 
                 ctx.save();
                 ctx.rotate(player.angle);
-                ctx.translate(baseHandX + leftPunch, -baseHandY + leftInward); 
+                ctx.translate(baseHandX + leftPunch + idleOffset, -baseHandY + leftInward); 
                 ctx.rotate(leftHandTilt); 
                 ctx.drawImage(
                     assets.leftHand,
@@ -1630,7 +1729,7 @@
 
                 ctx.save();
                 ctx.rotate(player.angle);
-                ctx.translate(baseHandX + rightPunch, baseHandY + rightInward); 
+                ctx.translate(baseHandX + rightPunch + idleOffset, baseHandY + rightInward); 
                 ctx.rotate(rightHandTilt); 
                 ctx.drawImage(
                     assets.rightHand,
@@ -1640,6 +1739,7 @@
 
                 ctx.save();
                 ctx.rotate(player.angle + headTilt); 
+                ctx.translate(idleOffset, 0);
                 ctx.drawImage(
                     assets.playerHead,
                     -player.width / 2, -player.height / 2, player.width, player.height
@@ -1677,7 +1777,21 @@
             }
         }
 
+        let frames = 0;
+        let lastFpsTime = performance.now();
+        let currentFps = 0;
+
         function renderLoop() {
+            frames++;
+            let now = performance.now();
+            if (now - lastFpsTime >= 1000) {
+                currentFps = frames;
+                frames = 0;
+                lastFpsTime = now;
+                let fpsEl = document.getElementById('fpsValue');
+                if (fpsEl) fpsEl.innerText = currentFps;
+            }
+            
             draw();
             requestAnimationFrame(renderLoop);
         }
