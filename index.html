@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Vertopia.io</title>
+    <title>Vertopia.io v1.0</title>
     <link rel="icon" type="image/png" href="Vertopia.png">
     <style>
         * {
@@ -564,7 +564,48 @@
         </div>
     </div>
 
-    <script>
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+        import { getDatabase, ref, set, onValue, onDisconnect } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyDcx4fwRtS_ebOZPKqYvniR_4W-uEt0zi4",
+            authDomain: "vertopia-io.firebaseapp.com",
+            databaseURL: "https://vertopia-io-default-rtdb.europe-west1.firebasedatabase.app",
+            projectId: "vertopia-io",
+            storageBucket: "vertopia-io.firebasestorage.app",
+            messagingSenderId: "503764652487",
+            appId: "1:503764652487:web:dbe6b8b5b6c1777c0189e2"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getDatabase(app);
+        
+        const myPlayerId = Math.random().toString(36).substring(2, 15);
+        const myPlayerRef = ref(db, `players/${myPlayerId}`);
+        
+        let otherPlayers = {};
+        
+        onDisconnect(myPlayerRef).remove();
+
+        const playersRef = ref(db, 'players');
+        onValue(playersRef, (snapshot) => {
+            const data = snapshot.val();
+            otherPlayers = {};
+            allPlayers = [{ name: player.name }];
+            if (data) {
+                for (let id in data) {
+                    if (id !== myPlayerId) {
+                        otherPlayers[id] = data[id];
+                        allPlayers.push({ name: data[id].name || "Vertopian" });
+                    }
+                }
+            }
+            if (gameState === 'PLAYING') {
+                updateLeaderboardUI();
+            }
+        });
+
         window.addEventListener('contextmenu', e => e.preventDefault());
 
         const canvas = document.getElementById('gameCanvas');
@@ -723,6 +764,8 @@
         let spawnGridZ = 0;
         let selectedRegX = 0;
         let selectedRegZ = 0;
+        let lastSyncTime = 0;
+        let lastAngle = 0;
 
         function applyRegionBounds(val) {
             return Math.max(-25, Math.min(25, val));
@@ -787,6 +830,15 @@
             gameState = 'MENU';
         });
 
+        function updateLeaderboardUI() {
+            leaderboardList.innerHTML = '';
+            allPlayers.forEach(p => {
+                const li = document.createElement('li');
+                li.innerText = p.name;
+                leaderboardList.appendChild(li);
+            });
+        }
+
         function startGameAtRegion(rx, rz) {
             let spawnTileX = MAP_CENTER + rx * 100;
             let spawnTileY = MAP_CENTER + rz * 100; 
@@ -814,6 +866,13 @@
             player.x = spawnTileX * TILE_SIZE;
             player.y = spawnTileY * TILE_SIZE;
 
+            set(myPlayerRef, {
+                x: Math.round(player.x),
+                y: Math.round(player.y),
+                angle: 0,
+                name: player.name
+            });
+
             spawnMenuUI.style.display = 'none';
             locationOverlay.style.display = 'none';
             inventory.style.display = 'flex'; 
@@ -822,13 +881,7 @@
             statsContainer.style.display = 'flex';
             coordsContainer.style.display = 'flex';
             
-            leaderboardList.innerHTML = ''; 
-            allPlayers.forEach(p => {
-                const li = document.createElement('li');
-                li.innerText = p.name;
-                leaderboardList.appendChild(li);
-            });
-
+            updateLeaderboardUI();
             gameState = 'PLAYING';
         }
 
@@ -1019,7 +1072,7 @@
             let inputName = nameInput.value.trim();
             player.name = inputName === "" ? "Vertopian" : inputName;
             allPlayers = [];
-            allPlayers.push({ name: player.name, score: 0 });
+            allPlayers.push({ name: player.name });
             
             mainMenu.style.display = 'none';
             locationOverlay.style.display = 'flex';
@@ -1195,6 +1248,20 @@
                 const screenPlayerY = (height / 2) - (cameraPanOffset.y * currentZoom);
                 
                 player.angle = Math.atan2(mouse.y - screenPlayerY, mouse.x - screenPlayerX);
+
+                let now = performance.now();
+                if (now - lastSyncTime > 50) { 
+                    if (isMoving || lastAngle !== player.angle) {
+                        set(myPlayerRef, {
+                            x: Math.round(player.x),
+                            y: Math.round(player.y),
+                            angle: Number(player.angle.toFixed(2)),
+                            name: player.name
+                        });
+                        lastSyncTime = now;
+                        lastAngle = player.angle;
+                    }
+                }
             }
         }
 
@@ -1262,6 +1329,47 @@
                     );
                     ctx.restore();
                 });
+
+                for (let id in otherPlayers) {
+                    let p = otherPlayers[id];
+                    ctx.save();
+                    ctx.translate(p.x + (player.width / 2), p.y + (player.height / 2));
+                    
+                    const baseHandX = 24; 
+                    const baseHandY = 24; 
+
+                    ctx.save();
+                    ctx.rotate(p.angle);
+                    ctx.translate(baseHandX, -baseHandY);
+                    ctx.drawImage(
+                        assets.leftHand,
+                        -player.handSize / 2, -player.handSize / 2, player.handSize, player.handSize
+                    );
+                    ctx.restore();
+
+                    ctx.save();
+                    ctx.rotate(p.angle);
+                    ctx.translate(baseHandX, baseHandY);
+                    ctx.drawImage(
+                        assets.rightHand,
+                        -player.handSize / 2, -player.handSize / 2, player.handSize, player.handSize
+                    );
+                    ctx.restore();
+
+                    ctx.save();
+                    ctx.rotate(p.angle);
+                    ctx.drawImage(
+                        assets.playerHead,
+                        -player.width / 2, -player.height / 2, player.width, player.height
+                    );
+                    ctx.restore();
+                    ctx.restore();
+                    
+                    ctx.font = 'bold 15px "Segoe UI", sans-serif';
+                    ctx.textAlign = 'center';
+                    ctx.fillStyle = 'white';
+                    ctx.fillText(p.name, p.x + (player.width / 2), p.y + player.height + 25);
+                }
 
                 ctx.save();
                 ctx.translate(player.x + (player.width / 2), player.y + (player.height / 2));
