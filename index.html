@@ -32,14 +32,13 @@
             display: block;
             width: 100%;
             height: 100%;
+            outline: none;
         }
 
         #uiLayer {
             position: absolute;
             top: 0;
             left: 0;
-            width: 100%;
-            height: 100%;
             display: flex;
             flex-direction: column;
             justify-content: center;
@@ -484,6 +483,7 @@
             width: max-content;
             gap: 20px;
             z-index: 100;
+            top: 42%;
         }
         
         .crafting-grid {
@@ -496,16 +496,45 @@
         .craft-2x2 { grid-template-columns: repeat(2, 60px); }
         .craft-6x2 { grid-template-columns: repeat(6, 60px); }
         .craft-5x1 { grid-template-columns: repeat(5, 60px); }
+        
+        #chatInputContainer {
+            display: none;
+            position: absolute;
+            top: 60%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            pointer-events: auto;
+            z-index: 200;
+        }
+        
+        #chatInput {
+            padding: 12px 20px;
+            font-size: 1.2rem;
+            border-radius: 8px;
+            border: none;
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            outline: none;
+            font-weight: bold;
+            width: 400px;
+            text-align: center;
+            font-family: inherit;
+            box-shadow: 0 0 10px rgba(0,0,0,0.5);
+        }
+        
+        #chatInput::placeholder {
+            color: #aaa;
+        }
     </style>
 </head>
 <body>
 
-    <canvas id="gameCanvas"></canvas>
+    <canvas id="gameCanvas" tabindex="0"></canvas>
 
     <div id="uiLayer">
         <div id="mainMenu">
             <h1>VERTOPIA.IO</h1>
-            <div class="version-text">v1.0.5</div>
+            <div class="version-text">v1.0.6</div>
             <input type="text" id="playerNameInput" placeholder="Your name" maxlength="15" autocomplete="off">
             <button id="playBtn" disabled>LOADING...</button>
         </div>
@@ -578,10 +607,7 @@
         </div>
 
         <div id="craftingUI" class="spawn-menu-wrapper">
-            <!-- Top Section: Armor, Player Preview, Crafting Grid, Arrow, Output -->
             <div style="display: flex; flex-direction: row; align-items: center; justify-content: center; width: 100%; gap: 40px;">
-                
-                <!-- Left: Armor + Player -->
                 <div style="display: flex; flex-direction: row; align-items: center; gap: 15px;">
                     <div class="crafting-grid craft-1x3">
                         <div class="inventory-slot"></div>
@@ -591,7 +617,6 @@
                     <canvas id="previewCanvas" width="100" height="130" style="background-color: rgba(0, 0, 0, 0.4); border-radius: 5px; border: 3px solid rgba(128,128,128,0.5);"></canvas>
                 </div>
                 
-                <!-- Right: Crafting -> Arrow -> Output -->
                 <div style="display: flex; flex-direction: row; align-items: center; gap: 15px;">
                     <div class="crafting-grid craft-2x2">
                         <div class="inventory-slot"></div>
@@ -606,16 +631,13 @@
                     
                     <div class="inventory-slot"></div>
                 </div>
-                
             </div>
             
-            <!-- Middle Section: Backpack 6x2 (includes side slots + center slots) -->
             <div class="crafting-grid craft-6x2">
                 <div class="inventory-slot"></div><div class="inventory-slot"></div><div class="inventory-slot"></div><div class="inventory-slot"></div><div class="inventory-slot"></div><div class="inventory-slot"></div>
                 <div class="inventory-slot"></div><div class="inventory-slot"></div><div class="inventory-slot"></div><div class="inventory-slot"></div><div class="inventory-slot"></div><div class="inventory-slot"></div>
             </div>
 
-            <!-- Bottom Section: Inventory (Hotbar) -->
             <div style="display: flex; justify-content: center; margin-top: 10px;">
                 <div class="crafting-grid craft-5x1" id="craftingInventory">
                     <div class="inventory-slot active"></div>
@@ -625,6 +647,10 @@
                     <div class="inventory-slot"></div>
                 </div>
             </div>
+        </div>
+
+        <div id="chatInputContainer">
+            <input type="text" id="chatInput" placeholder="Type something..." maxlength="60" autocomplete="off">
         </div>
 
         <div id="minimapContainer">
@@ -722,7 +748,10 @@
                                 nextHand: 'right',
                                 footstepTimer: 0,
                                 particleTimer: 0,
-                                currentStepSound: null
+                                currentStepSound: null,
+                                chatMessage: "",
+                                chatTimer: 0,
+                                lastChatT: 0
                             };
                         } else {
                             otherPlayers[id].targetX = data[id].x;
@@ -735,6 +764,12 @@
                                 otherPlayers[id].attackCounter = data[id].attack;
                                 otherPlayers[id].swingTimer = 0.001;
                                 playSound(assets.swingSound);
+                            }
+                            
+                            if (data[id].chat && data[id].chat.t !== otherPlayers[id].lastChatT) {
+                                otherPlayers[id].chatMessage = data[id].chat.msg;
+                                otherPlayers[id].chatTimer = 4.0;
+                                otherPlayers[id].lastChatT = data[id].chat.t;
                             }
                         }
                     }
@@ -787,11 +822,19 @@
 
         let width, height;
         function resize() {
-            width = window.innerWidth;
-            height = window.innerHeight;
+            let dpr = window.devicePixelRatio || 1;
+            width = Math.round(window.innerWidth * dpr);
+            height = Math.round(window.innerHeight * dpr);
+            
             canvas.width = width;
             canvas.height = height;
             ctx.imageSmoothingEnabled = false; 
+            
+            const uiLayer = document.getElementById('uiLayer');
+            uiLayer.style.width = `${width}px`;
+            uiLayer.style.height = `${height}px`;
+            uiLayer.style.transform = `scale(${1 / dpr})`;
+            uiLayer.style.transformOrigin = '0 0';
         }
         window.addEventListener('resize', resize);
         resize();
@@ -906,7 +949,11 @@
             footstepTimer: 0,
             currentStepSound: null,
             particleTimer: 0,
-            attackCounter: 0
+            attackCounter: 0,
+            chatMessage: "",
+            chatTimer: 0,
+            chatPayload: null,
+            forceSync: false
         };
 
         let activeSlot = 0; 
@@ -1112,33 +1159,66 @@
         }
         leaderboardToggleBtn.addEventListener('click', toggleLeaderboard);
 
+        let isChatting = false;
+
         window.addEventListener('keydown', (e) => {
-            const key = e.key.toLowerCase();
-            if (e.key === 'Tab') {
+            const key = e.key; 
+            const lowerKey = key.toLowerCase();
+            
+            if (key === 'Enter') {
+                if (gameState === 'PLAYING') {
+                    if (isChatting) {
+                        let msg = document.getElementById('chatInput').value.trim();
+                        if (msg !== "") {
+                            player.chatPayload = { msg: msg, t: Date.now() };
+                            player.chatMessage = msg;
+                            player.chatTimer = 4.0;
+                            player.forceSync = true;
+                        }
+                        document.getElementById('chatInput').value = "";
+                        document.getElementById('chatInputContainer').style.display = 'none';
+                        document.getElementById('chatInput').blur();
+                        isChatting = false;
+                        canvas.focus();
+                    } else {
+                        document.getElementById('chatInputContainer').style.display = 'block';
+                        document.getElementById('chatInput').focus();
+                        isChatting = true;
+                        for (let k in keys) keys[k] = false;
+                    }
+                }
+                return;
+            }
+
+            if (isChatting) return;
+
+            if (key === 'Tab') {
                 e.preventDefault(); 
                 if (gameState === 'PLAYING') toggleLeaderboard();
             }
-            if (key === 'e') {
+            if (lowerKey === 'e') {
                 if (gameState === 'PLAYING') {
                     let ui = document.getElementById('craftingUI');
                     ui.style.display = (ui.style.display === 'none' || ui.style.display === '') ? 'flex' : 'none';
                 }
             }
-            if (gameState === 'PLAYING' && e.key >= '1' && e.key <= '5') {
-                activeSlot = parseInt(e.key) - 1;
+            if (gameState === 'PLAYING' && key >= '1' && key <= '5') {
+                activeSlot = parseInt(key) - 1;
                 updateInventoryUI();
             }
-            if (keys.hasOwnProperty(key)) keys[key] = true;
+            if (keys.hasOwnProperty(lowerKey)) keys[lowerKey] = true;
         });
 
         window.addEventListener('keyup', (e) => {
-            const key = e.key.toLowerCase();
-            if (keys.hasOwnProperty(key)) keys[key] = false;
+            const lowerKey = e.key.toLowerCase();
+            if (isChatting) return;
+            if (keys.hasOwnProperty(lowerKey)) keys[lowerKey] = false;
         });
 
         window.addEventListener('mousemove', (e) => {
-            mouse.x = e.clientX;
-            mouse.y = e.clientY;
+            let dpr = window.devicePixelRatio || 1;
+            mouse.x = e.clientX * dpr;
+            mouse.y = e.clientY * dpr;
         });
 
         function playSound(audioInstance) {
@@ -1292,6 +1372,11 @@
                 
                 if (isMouseDown) {
                     attemptAttack();
+                }
+
+                if (player.chatTimer > 0) player.chatTimer -= dt;
+                for (let id in otherPlayers) {
+                    if (otherPlayers[id].chatTimer > 0) otherPlayers[id].chatTimer -= dt;
                 }
 
                 for (let i = particles.length - 1; i >= 0; i--) {
@@ -1551,17 +1636,23 @@
 
                 let now = performance.now();
                 if (now - lastSyncTime > 50) { 
-                    if (isMoving || lastAngle !== player.angle || player.sprintActive !== false) {
-                        set(myPlayerRef, {
+                    if (isMoving || lastAngle !== player.angle || player.sprintActive !== false || player.forceSync) {
+                        let syncData = {
                             x: Math.round(player.x),
                             y: Math.round(player.y),
                             angle: Number(player.angle.toFixed(2)),
                             name: player.name,
                             sprint: player.sprintActive,
                             attack: player.attackCounter
-                        });
+                        };
+                        if (player.chatPayload) {
+                            syncData.chat = player.chatPayload;
+                        }
+                        
+                        set(myPlayerRef, syncData);
                         lastSyncTime = now;
                         lastAngle = player.angle;
+                        player.forceSync = false;
                     }
                 }
             }
@@ -1579,9 +1670,10 @@
             const centerX = pCanvas.width / 2;
             const centerY = pCanvas.height / 2;
             
+            let dpr = window.devicePixelRatio || 1;
             const rect = pCanvas.getBoundingClientRect();
-            const mouseX = mouse.x - rect.left;
-            const mouseY = mouse.y - rect.top;
+            const mouseX = mouse.x - (rect.left * dpr);
+            const mouseY = mouse.y - (rect.top * dpr);
             
             const angle = Math.atan2(mouseY - centerY, mouseX - centerX);
             
@@ -1613,6 +1705,59 @@
             pCtx.restore();
             
             pCtx.restore();
+        }
+
+        function drawChatBubble(ctx, text, x, y, timer, maxTime = 4.0) {
+            if (timer <= 0) return;
+            let alpha = 1.0;
+            let slideY = 0;
+            
+            if (timer > maxTime - 0.2) {
+                let progress = (maxTime - timer) / 0.2; 
+                alpha = progress;
+                slideY = (1 - progress) * 15; 
+            } else if (timer < 0.5) {
+                alpha = timer / 0.5;
+            }
+            
+            ctx.save();
+            ctx.globalAlpha = alpha;
+            ctx.translate(x, y + slideY - 45); 
+            
+            ctx.font = 'bold 15px "Segoe UI", sans-serif';
+            let metrics = ctx.measureText(text);
+            let tw = metrics.width;
+            let th = 15;
+            let padX = 12;
+            let padY = 8;
+            
+            let bw = tw + padX * 2;
+            let bh = th + padY * 2;
+            let bx = -bw / 2;
+            let by = -bh / 2;
+            
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+            ctx.beginPath();
+            if (ctx.roundRect) {
+                ctx.roundRect(bx, by, bw, bh, 8);
+            } else {
+                ctx.rect(bx, by, bw, bh);
+            }
+            ctx.fill();
+            
+            ctx.beginPath();
+            ctx.moveTo(-6, by + bh);
+            ctx.lineTo(6, by + bh);
+            ctx.lineTo(0, by + bh + 6);
+            ctx.closePath();
+            ctx.fill();
+            
+            ctx.fillStyle = 'white';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(text, 0, 1);
+            
+            ctx.restore();
         }
 
         function draw() {
@@ -1762,6 +1907,7 @@
                     ctx.textAlign = 'center';
                     ctx.fillStyle = 'white';
                     ctx.fillText(p.name, p.x + (player.width / 2), p.y + player.height + 25);
+                    drawChatBubble(ctx, p.chatMessage, p.x + (player.width / 2), p.y, p.chatTimer);
                 }
 
                 ctx.save();
@@ -1835,6 +1981,7 @@
                 
                 ctx.fillStyle = 'white';
                 ctx.fillText(player.name, textX, textY);
+                drawChatBubble(ctx, player.chatMessage, textX, player.y, player.chatTimer);
             }
 
             ctx.restore();
