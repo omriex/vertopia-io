@@ -434,6 +434,27 @@
             align-items: center;
         }
 
+        #craftBtnContainer {
+            display: none;
+            position: absolute;
+            top: 120px;
+            left: 200px;
+            width: 44px;
+            height: 44px;
+            background-color: rgba(0, 0, 0, 0.5);
+            border-radius: 10px;
+            pointer-events: auto;
+            cursor: pointer;
+            transition: transform 0.15s ease-in-out;
+            align-items: center;
+            justify-content: center;
+            backface-visibility: hidden;
+            transform: translateZ(0);
+        }
+        #craftBtnContainer:hover {
+            transform: scale(0.95) translateZ(0);
+        }
+
         #leaderboardContainer {
             display: none;
             position: absolute;
@@ -534,7 +555,7 @@
     <div id="uiLayer">
         <div id="mainMenu">
             <h1>VERTOPIA.IO</h1>
-            <div class="version-text">v1.0.6</div>
+            <div class="version-text">v1.0.7</div>
             <input type="text" id="playerNameInput" placeholder="Your name" maxlength="15" autocomplete="off">
             <button id="playBtn" disabled>LOADING...</button>
         </div>
@@ -667,9 +688,20 @@
             <div>PING: <span id="pingValue">0</span></div>
         </div>
 
+        <div id="craftBtnContainer">
+            <svg viewBox="0 0 24 24" fill="white" width="24" height="24">
+                <path d="M22.7 14.3L21.7 15.3 19.3 12.9 20.3 11.9C20.5 11.7 20.9 11.7 21.1 11.9L22.7 13.5C22.9 13.7 22.9 14.1 22.7 14.3M13 19.9V22H15.1L21.2 15.9 19.1 13.8 13 19.9M11.6 15.4L11.1 14.9C10.7 14.5 10.7 13.9 11.1 13.5L14.7 9.9 11.9 7.1C10.3 8.7 8.3 10.1 6.1 11.1 5.9 10.1 5 9.1 4 9C4 9 4.3 6.9 5.8 4.6 7 2.7 9.1 1.7 9.1 1.7 8.3 2.5 7.9 3.5 8.1 4.5 9.4 4.5 10.5 5.2 11.2 6.4L14 9.2 15.4 7.8C15.8 7.4 15.8 6.8 15.4 6.4L14.9 5.9 16.3 4.5C16.7 4.1 17.3 4.1 17.7 4.5L19.5 6.3C19.9 6.7 19.9 7.3 19.5 7.7L18.1 9.1 17.6 8.6C17.2 8.2 16.6 8.2 16.2 8.6L14.8 10 17.6 12.8C18.8 12.1 19.5 11 19.5 11 19.5 11 18.5 13.1 16.6 14.3 14.3 15.8 12.2 17.8 10.6 20 10.5 19 9.5 18.1 8.5 18 8.5 18 8.8 15.9 10.3 13.6 9.5 13 8.9 12 8.9 11 8.9 10.4 9.1 9.9 9.4 9.5L11.6 11.7C12.3 12.4 12.3 13.6 11.6 14.3L11.6 15.4Z"/>
+            </svg>
+        </div>
+
         <div id="leaderboardContainer">
             <div id="leaderboardHeader">
-                <span>Players</span>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <svg viewBox="0 0 24 24" fill="white" width="20" height="20">
+                        <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
+                    </svg>
+                    <span>Players</span>
+                </div>
                 <button id="leaderboardToggleBtn">▼</button>
             </div>
             <div id="listWrapper">
@@ -763,7 +795,9 @@
                             if (data[id].attack !== undefined && data[id].attack !== otherPlayers[id].attackCounter) {
                                 otherPlayers[id].attackCounter = data[id].attack;
                                 otherPlayers[id].swingTimer = 0.001;
-                                playSound(assets.swingSound);
+                                let px = otherPlayers[id].x + player.width / 2;
+                                let py = otherPlayers[id].y + player.height / 2;
+                                playSound(assets.swingSound, px, py);
                             }
                             
                             if (data[id].chat && data[id].chat.t !== otherPlayers[id].lastChatT) {
@@ -1085,6 +1119,7 @@
             statsContainer.style.display = 'flex';
             coordsContainer.style.display = 'flex';
             document.getElementById('perfContainer').style.display = 'flex';
+            document.getElementById('craftBtnContainer').style.display = 'flex';
             
             updateLeaderboardUI();
             gameState = 'PLAYING';
@@ -1221,15 +1256,32 @@
             mouse.y = e.clientY * dpr;
         });
 
-        function playSound(audioInstance) {
+        function getVolume(x, y) {
+            if (x === undefined || y === undefined) return 1.0;
+            if (gameState !== 'PLAYING') return 0;
+            let dx = (player.x + player.width / 2) - x;
+            let dy = (player.y + player.height / 2) - y;
+            let dist = Math.sqrt(dx * dx + dy * dy);
+            let maxDist = 800;
+            if (dist > maxDist) return 0;
+            return Math.max(0, 1.0 - (dist / maxDist));
+        }
+
+        function playSound(audioInstance, x, y) {
+            let vol = getVolume(x, y);
+            if (vol <= 0) return;
             let sound = audioInstance.cloneNode();
+            sound.volume = vol;
             let playPromise = sound.play();
             if (playPromise !== undefined) playPromise.catch(e => {});
         }
 
-        function playSoundInstance(audioArray) {
+        function playSoundInstance(audioArray, x, y) {
             if (!audioArray || audioArray.length === 0) return null;
+            let vol = getVolume(x, y);
+            if (vol <= 0) return null;
             let sound = audioArray[Math.floor(Math.random() * audioArray.length)].cloneNode();
+            sound.volume = vol;
             let playPromise = sound.play();
             if (playPromise !== undefined) playPromise.catch(e => {});
             return sound;
@@ -1240,7 +1292,7 @@
                 player.swingTimer = 0.001; 
                 player.cooldownTimer = player.swingCooldown;
                 player.attackCounter++;
-                playSound(assets.swingSound);
+                playSound(assets.swingSound, player.x + player.width / 2, player.y + player.height / 2);
                 player.energy -= 5;
                 player.regenDelay = Math.max(player.regenDelay, 1.5);
                 if (player.energy <= 0) {
@@ -1464,7 +1516,7 @@
                             maxLife: 0.6,
                             isWater: isWater
                         });
-                        player.particleTimer = isWater && !isMoving ? 0.6 : 0.35;
+                        player.particleTimer = isWater && !isMoving ? 0.6 : 0.2;
                     }
                 }
 
@@ -1496,11 +1548,11 @@
                             player.currentStepSound = null;
                         }
                         if (isWater) { 
-                            player.currentStepSound = playSoundInstance(assets.swimSounds);
+                            player.currentStepSound = playSoundInstance(assets.swimSounds, player.x + player.width / 2, player.y + player.height / 2);
                         } else if (currentTile === 2) { 
-                            player.currentStepSound = playSoundInstance(assets.sandSteps);
+                            player.currentStepSound = playSoundInstance(assets.sandSteps, player.x + player.width / 2, player.y + player.height / 2);
                         } else { 
-                            player.currentStepSound = playSoundInstance(assets.grassSteps);
+                            player.currentStepSound = playSoundInstance(assets.grassSteps, player.x + player.width / 2, player.y + player.height / 2);
                         }
                         player.footstepTimer = isSprinting ? 0.4 : 0.5; 
                     }
@@ -1583,9 +1635,9 @@
                             if (p.currentStepSound) {
                                 try { p.currentStepSound.pause(); } catch(e) {}
                             }
-                            if (ptIsWater) p.currentStepSound = playSoundInstance(assets.swimSounds);
-                            else if (ptTile === 2) p.currentStepSound = playSoundInstance(assets.sandSteps);
-                            else p.currentStepSound = playSoundInstance(assets.grassSteps);
+                            if (ptIsWater) p.currentStepSound = playSoundInstance(assets.swimSounds, p.x + r, p.y + r);
+                            else if (ptTile === 2) p.currentStepSound = playSoundInstance(assets.sandSteps, p.x + r, p.y + r);
+                            else p.currentStepSound = playSoundInstance(assets.grassSteps, p.x + r, p.y + r);
                             
                             p.footstepTimer = p.sprint ? 0.4 : 0.5;
                         }
@@ -1602,7 +1654,7 @@
                                 maxLife: 0.6,
                                 isWater: ptIsWater
                             });
-                            p.particleTimer = ptIsWater && !pIsMoving ? 0.6 : 0.35;
+                            p.particleTimer = ptIsWater && !pIsMoving ? 0.6 : 0.2;
                         }
                     }
                 }
@@ -2022,6 +2074,14 @@
             drawPreview();
             requestAnimationFrame(renderLoop);
         }
+
+        const craftBtnContainer = document.getElementById('craftBtnContainer');
+        craftBtnContainer.addEventListener('click', () => {
+            if (gameState === 'PLAYING') {
+                let ui = document.getElementById('craftingUI');
+                ui.style.display = (ui.style.display === 'none' || ui.style.display === '') ? 'flex' : 'none';
+            }
+        });
     </script>
 </body>
 </html>
