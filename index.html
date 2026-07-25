@@ -494,7 +494,8 @@
         
         .craft-4 { grid-template-columns: repeat(2, 60px); }
         .craft-5 { grid-template-columns: repeat(5, 60px); }
-        .craft-12 { grid-template-columns: repeat(4, 60px); }
+        .craft-8 { grid-template-columns: repeat(4, 60px); }
+        .craft-3-horiz { grid-template-columns: repeat(3, 60px); }
     </style>
 </head>
 <body>
@@ -504,7 +505,7 @@
     <div id="uiLayer">
         <div id="mainMenu">
             <h1>VERTOPIA.IO</h1>
-            <div class="version-text">v1.0.3</div>
+            <div class="version-text">v1.0.4</div>
             <input type="text" id="playerNameInput" placeholder="Your name" maxlength="15" autocomplete="off">
             <button id="playBtn" disabled>LOADING...</button>
         </div>
@@ -579,34 +580,43 @@
         <div id="craftingUI" class="spawn-menu-wrapper">
             <div style="display: flex; flex-direction: column; align-items: center; width: 100%;">
                 <div class="sm-title">CRAFTING</div>
-                <div class="crafting-grid craft-4">
-                    <div class="inventory-slot"></div>
-                    <div class="inventory-slot"></div>
-                    <div class="inventory-slot"></div>
-                    <div class="inventory-slot"></div>
-                </div>
                 
-                <hr class="sm-hr" style="width: 100%;">
-                
-                <div class="sm-title">INVENTORY</div>
-                <div class="crafting-grid craft-5">
-                    <div class="inventory-slot active"></div>
-                    <div class="inventory-slot"></div>
-                    <div class="inventory-slot"></div>
-                    <div class="inventory-slot"></div>
-                    <div class="inventory-slot"></div>
+                <div style="display: flex; flex-direction: row; align-items: center; justify-content: center; width: 100%; gap: 20px; margin-bottom: 15px;">
+                    <canvas id="previewCanvas" width="90" height="90" style="background-color: rgba(255, 255, 255, 0.05); border-radius: 8px; border: 2px solid rgba(255, 255, 255, 0.1);"></canvas>
+                    
+                    <div class="crafting-grid craft-3-horiz">
+                        <div class="inventory-slot"></div>
+                        <div class="inventory-slot"></div>
+                        <div class="inventory-slot"></div>
+                    </div>
+                    
+                    <div class="crafting-grid craft-4">
+                        <div class="inventory-slot"></div>
+                        <div class="inventory-slot"></div>
+                        <div class="inventory-slot"></div>
+                        <div class="inventory-slot"></div>
+                    </div>
                 </div>
                 
                 <hr class="sm-hr" style="width: 100%;">
                 
                 <div class="sm-title">BACKPACK</div>
-                <div class="crafting-grid craft-12">
+                <div class="crafting-grid craft-8">
                     <div class="inventory-slot"></div><div class="inventory-slot"></div>
                     <div class="inventory-slot"></div><div class="inventory-slot"></div>
                     <div class="inventory-slot"></div><div class="inventory-slot"></div>
                     <div class="inventory-slot"></div><div class="inventory-slot"></div>
-                    <div class="inventory-slot"></div><div class="inventory-slot"></div>
-                    <div class="inventory-slot"></div><div class="inventory-slot"></div>
+                </div>
+
+                <hr class="sm-hr" style="width: 100%;">
+                
+                <div class="sm-title">INVENTORY</div>
+                <div class="crafting-grid craft-5" id="craftingInventory">
+                    <div class="inventory-slot active"></div>
+                    <div class="inventory-slot"></div>
+                    <div class="inventory-slot"></div>
+                    <div class="inventory-slot"></div>
+                    <div class="inventory-slot"></div>
                 </div>
             </div>
         </div>
@@ -749,6 +759,8 @@
         
         const inventory = document.getElementById('inventory');
         const inventorySlots = document.querySelectorAll('#inventory .inventory-slot');
+        const craftingInventorySlots = document.querySelectorAll('#craftingInventory .inventory-slot');
+        
         const nameInput = document.getElementById('playerNameInput');
         const leaderboardContainer = document.getElementById('leaderboardContainer');
         const leaderboardList = document.getElementById('leaderboardList');
@@ -1057,9 +1069,22 @@
                 if (index === activeSlot) slot.classList.add('active');
                 else slot.classList.remove('active');
             });
+            craftingInventorySlots.forEach((slot, index) => {
+                if (index === activeSlot) slot.classList.add('active');
+                else slot.classList.remove('active');
+            });
         }
 
         inventorySlots.forEach((slot, index) => {
+            slot.addEventListener('mousedown', () => {
+                if (gameState === 'PLAYING') {
+                    activeSlot = index;
+                    updateInventoryUI();
+                }
+            });
+        });
+        
+        craftingInventorySlots.forEach((slot, index) => {
             slot.addEventListener('mousedown', () => {
                 if (gameState === 'PLAYING') {
                     activeSlot = index;
@@ -1536,6 +1561,50 @@
             }
         }
 
+        function drawPreview() {
+            const ui = document.getElementById('craftingUI');
+            if (gameState !== 'PLAYING' || ui.style.display === 'none') return;
+            
+            const pCanvas = document.getElementById('previewCanvas');
+            const pCtx = pCanvas.getContext('2d');
+            
+            pCtx.clearRect(0, 0, pCanvas.width, pCanvas.height);
+            
+            const centerX = pCanvas.width / 2;
+            const centerY = pCanvas.height / 2;
+            
+            const rect = pCanvas.getBoundingClientRect();
+            const mouseX = mouse.x - rect.left;
+            const mouseY = mouse.y - rect.top;
+            
+            const angle = Math.atan2(mouseY - centerY, mouseX - centerX);
+            
+            pCtx.save();
+            pCtx.translate(centerX, centerY);
+            pCtx.rotate(angle);
+            
+            const baseHandX = 24; 
+            const baseHandY = 24; 
+            let idleOffset = player.swingTimer === 0 ? Math.sin(performance.now() / 400) * 1.5 : 0;
+            
+            pCtx.save();
+            pCtx.translate(baseHandX + idleOffset, -baseHandY);
+            pCtx.drawImage(assets.leftHand, -player.handSize / 2, -player.handSize / 2, player.handSize, player.handSize);
+            pCtx.restore();
+
+            pCtx.save();
+            pCtx.translate(baseHandX + idleOffset, baseHandY);
+            pCtx.drawImage(assets.rightHand, -player.handSize / 2, -player.handSize / 2, player.handSize, player.handSize);
+            pCtx.restore();
+
+            pCtx.save();
+            pCtx.translate(idleOffset, 0);
+            pCtx.drawImage(assets.playerHead, -player.width / 2, -player.height / 2, player.width, player.height);
+            pCtx.restore();
+            
+            pCtx.restore();
+        }
+
         function draw() {
             ctx.fillStyle = '#000000';
             ctx.fillRect(0, 0, width, height);
@@ -1615,8 +1684,6 @@
                     ctx.restore();
                 });
 
-                let idleOffset = Math.sin(performance.now() / 400) * 1.5;
-
                 for (let id in otherPlayers) {
                     let p = otherPlayers[id];
                     ctx.save();
@@ -1649,10 +1716,11 @@
                     
                     const baseHandX = 24; 
                     const baseHandY = 24; 
+                    let pIdleOffset = p.swingTimer === 0 ? Math.sin(performance.now() / 400) * 1.5 : 0;
 
                     ctx.save();
                     ctx.rotate(p.angle);
-                    ctx.translate(baseHandX + pLeftPunch + idleOffset, -baseHandY + pLeftInward);
+                    ctx.translate(baseHandX + pLeftPunch + pIdleOffset, -baseHandY + pLeftInward);
                     ctx.rotate(pLeftHandTilt);
                     ctx.drawImage(
                         assets.leftHand,
@@ -1662,7 +1730,7 @@
 
                     ctx.save();
                     ctx.rotate(p.angle);
-                    ctx.translate(baseHandX + pRightPunch + idleOffset, baseHandY + pRightInward);
+                    ctx.translate(baseHandX + pRightPunch + pIdleOffset, baseHandY + pRightInward);
                     ctx.rotate(pRightHandTilt);
                     ctx.drawImage(
                         assets.rightHand,
@@ -1672,7 +1740,7 @@
 
                     ctx.save();
                     ctx.rotate(p.angle + pHeadTilt);
-                    ctx.translate(idleOffset, 0);
+                    ctx.translate(pIdleOffset, 0);
                     ctx.drawImage(
                         assets.playerHead,
                         -player.width / 2, -player.height / 2, player.width, player.height
@@ -1716,6 +1784,7 @@
 
                 const baseHandX = 24; 
                 const baseHandY = 24; 
+                let idleOffset = player.swingTimer === 0 ? Math.sin(performance.now() / 400) * 1.5 : 0;
 
                 ctx.save();
                 ctx.rotate(player.angle);
@@ -1793,6 +1862,7 @@
             }
             
             draw();
+            drawPreview();
             requestAnimationFrame(renderLoop);
         }
     </script>
