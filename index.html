@@ -470,7 +470,7 @@
     <div id="uiLayer">
         <div id="mainMenu">
             <h1>VERTOPIA.IO</h1>
-            <div class="version-text">v1.0.1</div>
+            <div class="version-text">v1.0.2</div>
             <input type="text" id="playerNameInput" placeholder="Your name" maxlength="15" autocomplete="off">
             <button id="playBtn" disabled>LOADING...</button>
         </div>
@@ -608,16 +608,55 @@
         const playersRef = ref(db, 'players');
         onValue(playersRef, (snapshot) => {
             const data = snapshot.val();
-            otherPlayers = {};
+            let validIds = new Set();
             allPlayers = [{ name: player.name }];
+            
             if (data) {
                 for (let id in data) {
                     if (id !== myPlayerId) {
-                        otherPlayers[id] = data[id];
+                        validIds.add(id);
                         allPlayers.push({ name: data[id].name || "Vertopian" });
+                        
+                        if (!otherPlayers[id]) {
+                            otherPlayers[id] = {
+                                x: data[id].x,
+                                y: data[id].y,
+                                angle: data[id].angle,
+                                targetX: data[id].x,
+                                targetY: data[id].y,
+                                targetAngle: data[id].angle,
+                                sprint: data[id].sprint || false,
+                                name: data[id].name,
+                                attackCounter: data[id].attack || 0,
+                                swingTimer: 0,
+                                nextHand: 'right',
+                                footstepTimer: 0,
+                                particleTimer: 0,
+                                currentStepSound: null
+                            };
+                        } else {
+                            otherPlayers[id].targetX = data[id].x;
+                            otherPlayers[id].targetY = data[id].y;
+                            otherPlayers[id].targetAngle = data[id].angle;
+                            otherPlayers[id].sprint = data[id].sprint || false;
+                            otherPlayers[id].name = data[id].name;
+                            
+                            if (data[id].attack !== undefined && data[id].attack !== otherPlayers[id].attackCounter) {
+                                otherPlayers[id].attackCounter = data[id].attack;
+                                otherPlayers[id].swingTimer = 0.001;
+                                playSound(assets.swingSound);
+                            }
+                        }
                     }
                 }
             }
+            
+            for (let id in otherPlayers) {
+                if (!validIds.has(id)) {
+                    delete otherPlayers[id];
+                }
+            }
+
             if (gameState === 'PLAYING') {
                 updateLeaderboardUI();
             }
@@ -677,7 +716,6 @@
         const waterTiles = [];
 
         function generateMap() {
-            // Seeded random so everyone gets the exact same map structure!
             let mapSeed = 12345;
             function seededRandom() {
                 mapSeed = (mapSeed * 9301 + 49297) % 233280;
@@ -775,7 +813,8 @@
             nextHand: 'right',
             footstepTimer: 0,
             currentStepSound: null,
-            particleTimer: 0
+            particleTimer: 0,
+            attackCounter: 0
         };
 
         let activeSlot = 0; 
@@ -894,7 +933,9 @@
                 x: Math.round(player.x),
                 y: Math.round(player.y),
                 angle: 0,
-                name: player.name
+                name: player.name,
+                sprint: false,
+                attack: 0
             });
 
             spawnMenuUI.style.display = 'none';
@@ -1006,6 +1047,7 @@
             if (player.swingTimer === 0 && player.cooldownTimer <= 0 && player.energy >= 5) {
                 player.swingTimer = 0.001; 
                 player.cooldownTimer = player.swingCooldown;
+                player.attackCounter++;
                 playSound(assets.swingSound);
                 player.energy -= 5;
                 player.regenDelay = Math.max(player.regenDelay, 1.5);
@@ -1077,7 +1119,6 @@
                 playBtn.innerText = 'PLAY';
                 playBtn.disabled = false;
                 
-                // Initialize background loops once assets load
                 lastLogicTime = performance.now();
                 setInterval(logicLoop, 1000 / 60);
                 requestAnimationFrame(renderLoop);
@@ -1117,35 +1158,7 @@
             renderSpawnGrid();
         });
 
-        // Independent collision check that allows sliding but completely stops overlapping
-        function checkPlayerCollision(newX, newY) {
-            let r = player.width / 2;
-            let cx = newX + r;
-            let cy = newY + r;
-            
-            let currentCx = player.x + r;
-            let currentCy = player.y + r;
-            
-            let minRadius = 40; // Collision distance threshold (slightly smaller than 48 to allow snug overlap)
-            
-            for (let id in otherPlayers) {
-                let p = otherPlayers[id];
-                let pcx = p.x + r;
-                let pcy = p.y + r;
-                
-                let newDistSq = (cx - pcx)**2 + (cy - pcy)**2;
-                let currentDistSq = (currentCx - pcx)**2 + (currentCy - pcy)**2;
-                
-                // Only block if we are colliding AND we are moving closer to them (prevents getting stuck)
-                if (newDistSq < minRadius**2 && newDistSq < currentDistSq) {
-                    return true;
-                }
-            }
-            return false;
-        }
-
         function update(dt) {
-            // Apply zoom limits securely for background catching up
             let zoomLerp = Math.min(10 * dt, 1);
             currentZoom += (targetZoom - currentZoom) * zoomLerp; 
 
@@ -1165,7 +1178,11 @@
                     } else {
                         let ratio = p.life / p.maxLife;
                         p.alpha = ratio * 1.0; 
-                        p.size = ratio * 48; 
+                        if (p.isWater) {
+                            p.size = 24 + (1 - ratio) * 48;
+                        } else {
+                            p.size = ratio * 48; 
+                        }
                     }
                 }
 
@@ -1208,8 +1225,9 @@
                 tileX = Math.max(0, Math.min(MAP_COLS - 1, tileX));
                 tileY = Math.max(0, Math.min(MAP_ROWS - 1, tileY));
                 let currentTile = mapData[tileY * MAP_COLS + tileX]; 
+                let isWater = currentTile === 1;
 
-                if (currentTile === 1) { 
+                if (isWater) { 
                     player.speed = isSprinting ? 96 : 64;
                 } else {
                     player.speed = isSprinting ? 288 : 192;
@@ -1231,7 +1249,8 @@
                             size: 48,
                             alpha: 1.0,
                             life: 0.6,
-                            maxLife: 0.6
+                            maxLife: 0.6,
+                            isWater: isWater
                         });
                         player.particleTimer = 0.35;
                     }
@@ -1256,20 +1275,15 @@
                     let moveX = dx * player.speed * dt;
                     let moveY = dy * player.speed * dt;
 
-                    // Evaluate X and Y independently to allow sliding along players!
-                    if (!checkPlayerCollision(player.x + moveX, player.y)) {
-                        player.x += moveX;
-                    }
-                    if (!checkPlayerCollision(player.x, player.y + moveY)) {
-                        player.y += moveY;
-                    }
+                    player.x += moveX;
+                    player.y += moveY;
 
                     if (player.footstepTimer <= 0) {
                         if (player.currentStepSound) {
                             try { player.currentStepSound.pause(); } catch(e) {}
                             player.currentStepSound = null;
                         }
-                        if (currentTile === 1) { 
+                        if (isWater) { 
                             player.currentStepSound = playSoundInstance(assets.swimSounds);
                         } else if (currentTile === 2) { 
                             player.currentStepSound = playSoundInstance(assets.sandSteps);
@@ -1285,6 +1299,99 @@
                             player.currentStepSound.currentTime = 0;
                         } catch(e) {}
                         player.currentStepSound = null;
+                    }
+                }
+
+                let r = player.width / 2;
+                let cx = player.x + r;
+                let cy = player.y + r;
+                let minRadius = 40;
+
+                for (let id in otherPlayers) {
+                    let p = otherPlayers[id];
+                    let pcx = p.x + r;
+                    let pcy = p.y + r;
+                    
+                    let pdx = cx - pcx;
+                    let pdy = cy - pcy;
+                    let dist = Math.sqrt(pdx*pdx + pdy*pdy);
+
+                    if (dist < minRadius && dist > 0) {
+                        let overlap = minRadius - dist;
+                        let nx = pdx / dist;
+                        let ny = pdy / dist;
+                        
+                        player.x += nx * overlap;
+                        player.y += ny * overlap;
+                        
+                        cx = player.x + r;
+                        cy = player.y + r;
+                    }
+                }
+
+                for (let id in otherPlayers) {
+                    let p = otherPlayers[id];
+                    
+                    let lerpSpeed = 15 * dt;
+                    if (p.x === undefined) p.x = p.targetX;
+                    if (p.y === undefined) p.y = p.targetY;
+                    if (p.angle === undefined) p.angle = p.targetAngle;
+
+                    p.x += (p.targetX - p.x) * lerpSpeed;
+                    p.y += (p.targetY - p.y) * lerpSpeed;
+
+                    let diff = p.targetAngle - p.angle;
+                    while (diff < -Math.PI) diff += Math.PI * 2;
+                    while (diff > Math.PI) diff -= Math.PI * 2;
+                    p.angle += diff * lerpSpeed;
+
+                    if (p.swingTimer > 0) {
+                        p.swingTimer += dt;
+                        if (p.swingTimer >= player.swingDuration) {
+                            p.nextHand = p.nextHand === 'right' ? 'left' : 'right';
+                            p.swingTimer = 0;
+                        }
+                    }
+
+                    let distMoved = Math.sqrt((p.targetX - p.x)**2 + (p.targetY - p.y)**2);
+                    let pIsMoving = distMoved > 2.0;
+
+                    if (p.footstepTimer > 0) p.footstepTimer -= dt;
+                    if (p.particleTimer > 0) p.particleTimer -= dt;
+
+                    let ptX = Math.floor((p.x + r) / TILE_SIZE);
+                    let ptY = Math.floor((p.y + r) / TILE_SIZE);
+                    ptX = Math.max(0, Math.min(MAP_COLS - 1, ptX));
+                    ptY = Math.max(0, Math.min(MAP_ROWS - 1, ptY));
+                    let ptTile = mapData[ptY * MAP_COLS + ptX]; 
+                    let ptIsWater = ptTile === 1;
+
+                    if (pIsMoving) {
+                        if (p.footstepTimer <= 0) {
+                            if (p.currentStepSound) {
+                                try { p.currentStepSound.pause(); } catch(e) {}
+                            }
+                            if (ptIsWater) p.currentStepSound = playSoundInstance(assets.swimSounds);
+                            else if (ptTile === 2) p.currentStepSound = playSoundInstance(assets.sandSteps);
+                            else p.currentStepSound = playSoundInstance(assets.grassSteps);
+                            
+                            p.footstepTimer = p.sprint ? 0.4 : 0.5;
+                        }
+                    }
+
+                    if (p.sprint && pIsMoving) {
+                        if (p.particleTimer <= 0) {
+                            particles.push({
+                                x: p.x + r,
+                                y: p.y + r,
+                                size: 48,
+                                alpha: 1.0,
+                                life: 0.6,
+                                maxLife: 0.6,
+                                isWater: ptIsWater
+                            });
+                            p.particleTimer = 0.35;
+                        }
                     }
                 }
 
@@ -1317,12 +1424,14 @@
 
                 let now = performance.now();
                 if (now - lastSyncTime > 50) { 
-                    if (isMoving || lastAngle !== player.angle) {
+                    if (isMoving || lastAngle !== player.angle || player.sprintActive !== false) {
                         set(myPlayerRef, {
                             x: Math.round(player.x),
                             y: Math.round(player.y),
                             angle: Number(player.angle.toFixed(2)),
-                            name: player.name
+                            name: player.name,
+                            sprint: player.sprintActive,
+                            attack: player.attackCounter
                         });
                         lastSyncTime = now;
                         lastAngle = player.angle;
@@ -1389,10 +1498,24 @@
                     ctx.save();
                     ctx.globalAlpha = p.alpha;
                     ctx.translate(p.x, p.y);
-                    ctx.drawImage(
-                        assets.sprintParticle,
-                        -p.size / 2, -p.size / 2, p.size, p.size
-                    );
+                    
+                    if (p.isWater) {
+                        ctx.drawImage(assets.sprintParticle, -p.size/2, -p.size/2, p.size, p.size);
+                        
+                        ctx.beginPath();
+                        ctx.arc(0, 0, p.size/2 * 0.8, 0, Math.PI*2);
+                        ctx.fillStyle = "rgba(0, 255, 255, " + (p.alpha * 0.4) + ")";
+                        ctx.fill();
+                        
+                        ctx.lineWidth = 2;
+                        ctx.strokeStyle = "rgba(0, 255, 255, " + p.alpha + ")";
+                        ctx.stroke();
+                    } else {
+                        ctx.drawImage(
+                            assets.sprintParticle,
+                            -p.size / 2, -p.size / 2, p.size, p.size
+                        );
+                    }
                     ctx.restore();
                 });
 
@@ -1401,12 +1524,38 @@
                     ctx.save();
                     ctx.translate(p.x + (player.width / 2), p.y + (player.height / 2));
                     
+                    let pHeadTilt = 0;
+                    let pRightPunch = 0;
+                    let pLeftPunch = 0;
+                    let pRightInward = 0;
+                    let pLeftInward = 0;
+                    let pRightHandTilt = 0;
+                    let pLeftHandTilt = 0;
+
+                    if (p.swingTimer > 0) {
+                        let progress = p.swingTimer / player.swingDuration;
+                        let punchExtension = Math.sin(progress * Math.PI); 
+
+                        if (p.nextHand === 'right') {
+                            pRightPunch = punchExtension * 24; 
+                            pRightInward = punchExtension * -10;    
+                            pHeadTilt = punchExtension * -0.25;      
+                            pRightHandTilt = punchExtension * -0.5; 
+                        } else {
+                            pLeftPunch = punchExtension * 24;
+                            pLeftInward = punchExtension * 10;      
+                            pHeadTilt = punchExtension * 0.25;     
+                            pLeftHandTilt = punchExtension * 0.5;   
+                        }
+                    }
+                    
                     const baseHandX = 24; 
                     const baseHandY = 24; 
 
                     ctx.save();
                     ctx.rotate(p.angle);
-                    ctx.translate(baseHandX, -baseHandY);
+                    ctx.translate(baseHandX + pLeftPunch, -baseHandY + pLeftInward);
+                    ctx.rotate(pLeftHandTilt);
                     ctx.drawImage(
                         assets.leftHand,
                         -player.handSize / 2, -player.handSize / 2, player.handSize, player.handSize
@@ -1415,7 +1564,8 @@
 
                     ctx.save();
                     ctx.rotate(p.angle);
-                    ctx.translate(baseHandX, baseHandY);
+                    ctx.translate(baseHandX + pRightPunch, baseHandY + pRightInward);
+                    ctx.rotate(pRightHandTilt);
                     ctx.drawImage(
                         assets.rightHand,
                         -player.handSize / 2, -player.handSize / 2, player.handSize, player.handSize
@@ -1423,7 +1573,7 @@
                     ctx.restore();
 
                     ctx.save();
-                    ctx.rotate(p.angle);
+                    ctx.rotate(p.angle + pHeadTilt);
                     ctx.drawImage(
                         assets.playerHead,
                         -player.width / 2, -player.height / 2, player.width, player.height
