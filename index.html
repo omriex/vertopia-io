@@ -482,7 +482,7 @@
             display: none;
             flex-direction: column;
             width: max-content;
-            gap: 15px;
+            gap: 20px;
             z-index: 100;
         }
         
@@ -492,10 +492,10 @@
             justify-content: center;
         }
         
-        .craft-4 { grid-template-columns: repeat(2, 60px); }
-        .craft-5 { grid-template-columns: repeat(5, 60px); }
-        .craft-8 { grid-template-columns: repeat(4, 60px); }
-        .craft-3-horiz { grid-template-columns: repeat(3, 60px); }
+        .craft-1x3 { grid-template-columns: repeat(1, 60px); }
+        .craft-2x2 { grid-template-columns: repeat(2, 60px); }
+        .craft-6x2 { grid-template-columns: repeat(6, 60px); }
+        .craft-5x1 { grid-template-columns: repeat(5, 60px); }
     </style>
 </head>
 <body>
@@ -505,7 +505,7 @@
     <div id="uiLayer">
         <div id="mainMenu">
             <h1>VERTOPIA.IO</h1>
-            <div class="version-text">v1.0.4</div>
+            <div class="version-text">v1.0.5</div>
             <input type="text" id="playerNameInput" placeholder="Your name" maxlength="15" autocomplete="off">
             <button id="playBtn" disabled>LOADING...</button>
         </div>
@@ -578,40 +578,46 @@
         </div>
 
         <div id="craftingUI" class="spawn-menu-wrapper">
-            <div style="display: flex; flex-direction: column; align-items: center; width: 100%;">
-                <div class="sm-title">CRAFTING</div>
+            <!-- Top Section: Armor, Player Preview, Crafting Grid, Arrow, Output -->
+            <div style="display: flex; flex-direction: row; align-items: center; justify-content: center; width: 100%; gap: 40px;">
                 
-                <div style="display: flex; flex-direction: row; align-items: center; justify-content: center; width: 100%; gap: 20px; margin-bottom: 15px;">
-                    <canvas id="previewCanvas" width="90" height="90" style="background-color: rgba(255, 255, 255, 0.05); border-radius: 8px; border: 2px solid rgba(255, 255, 255, 0.1);"></canvas>
-                    
-                    <div class="crafting-grid craft-3-horiz">
+                <!-- Left: Armor + Player -->
+                <div style="display: flex; flex-direction: row; align-items: center; gap: 15px;">
+                    <div class="crafting-grid craft-1x3">
+                        <div class="inventory-slot"></div>
+                        <div class="inventory-slot"></div>
+                        <div class="inventory-slot"></div>
+                    </div>
+                    <canvas id="previewCanvas" width="100" height="130" style="background-color: rgba(0, 0, 0, 0.4); border-radius: 5px; border: 3px solid rgba(128,128,128,0.5);"></canvas>
+                </div>
+                
+                <!-- Right: Crafting -> Arrow -> Output -->
+                <div style="display: flex; flex-direction: row; align-items: center; gap: 15px;">
+                    <div class="crafting-grid craft-2x2">
+                        <div class="inventory-slot"></div>
                         <div class="inventory-slot"></div>
                         <div class="inventory-slot"></div>
                         <div class="inventory-slot"></div>
                     </div>
                     
-                    <div class="crafting-grid craft-4">
-                        <div class="inventory-slot"></div>
-                        <div class="inventory-slot"></div>
-                        <div class="inventory-slot"></div>
-                        <div class="inventory-slot"></div>
-                    </div>
+                    <svg width="40" height="40" viewBox="0 0 24 24" fill="rgba(255, 255, 255, 0.6)">
+                        <path d="M4 11h10.586l-4.293-4.293 1.414-1.414L19.414 12l-7.707 7.707-1.414-1.414L14.586 13H4v-2z"/>
+                    </svg>
+                    
+                    <div class="inventory-slot"></div>
                 </div>
                 
-                <hr class="sm-hr" style="width: 100%;">
-                
-                <div class="sm-title">BACKPACK</div>
-                <div class="crafting-grid craft-8">
-                    <div class="inventory-slot"></div><div class="inventory-slot"></div>
-                    <div class="inventory-slot"></div><div class="inventory-slot"></div>
-                    <div class="inventory-slot"></div><div class="inventory-slot"></div>
-                    <div class="inventory-slot"></div><div class="inventory-slot"></div>
-                </div>
+            </div>
+            
+            <!-- Middle Section: Backpack 6x2 (includes side slots + center slots) -->
+            <div class="crafting-grid craft-6x2">
+                <div class="inventory-slot"></div><div class="inventory-slot"></div><div class="inventory-slot"></div><div class="inventory-slot"></div><div class="inventory-slot"></div><div class="inventory-slot"></div>
+                <div class="inventory-slot"></div><div class="inventory-slot"></div><div class="inventory-slot"></div><div class="inventory-slot"></div><div class="inventory-slot"></div><div class="inventory-slot"></div>
+            </div>
 
-                <hr class="sm-hr" style="width: 100%;">
-                
-                <div class="sm-title">INVENTORY</div>
-                <div class="crafting-grid craft-5" id="craftingInventory">
+            <!-- Bottom Section: Inventory (Hotbar) -->
+            <div style="display: flex; justify-content: center; margin-top: 10px;">
+                <div class="crafting-grid craft-5x1" id="craftingInventory">
                     <div class="inventory-slot active"></div>
                     <div class="inventory-slot"></div>
                     <div class="inventory-slot"></div>
@@ -1150,7 +1156,7 @@
         }
 
         function attemptAttack() {
-            if (player.swingTimer === 0 && player.cooldownTimer <= 0 && player.energy >= 5) {
+            if (player.swingTimer <= 0 && player.cooldownTimer <= 0 && player.energy >= 5) {
                 player.swingTimer = 0.001; 
                 player.cooldownTimer = player.swingCooldown;
                 player.attackCounter++;
@@ -1585,7 +1591,11 @@
             
             const baseHandX = 24; 
             const baseHandY = 24; 
-            let idleOffset = player.swingTimer === 0 ? Math.sin(performance.now() / 400) * 1.5 : 0;
+            
+            let idleOffset = 0;
+            if (player.swingTimer <= 0) {
+                idleOffset = Math.sin(performance.now() / 400) * 1.5;
+            }
             
             pCtx.save();
             pCtx.translate(baseHandX + idleOffset, -baseHandY);
@@ -1716,7 +1726,7 @@
                     
                     const baseHandX = 24; 
                     const baseHandY = 24; 
-                    let pIdleOffset = p.swingTimer === 0 ? Math.sin(performance.now() / 400) * 1.5 : 0;
+                    let pIdleOffset = p.swingTimer <= 0 ? Math.sin(performance.now() / 400) * 1.5 : 0;
 
                     ctx.save();
                     ctx.rotate(p.angle);
@@ -1784,7 +1794,7 @@
 
                 const baseHandX = 24; 
                 const baseHandY = 24; 
-                let idleOffset = player.swingTimer === 0 ? Math.sin(performance.now() / 400) * 1.5 : 0;
+                let idleOffset = player.swingTimer <= 0 ? Math.sin(performance.now() / 400) * 1.5 : 0;
 
                 ctx.save();
                 ctx.rotate(player.angle);
