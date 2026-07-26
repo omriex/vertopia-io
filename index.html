@@ -555,7 +555,7 @@
     <div id="uiLayer">
         <div id="mainMenu">
             <h1>VERTOPIA.IO</h1>
-            <div class="version-text">v1.0.7</div>
+            <div class="version-text">v1.0.8</div>
             <input type="text" id="playerNameInput" placeholder="Your name" maxlength="15" autocomplete="off">
             <button id="playBtn" disabled>LOADING...</button>
         </div>
@@ -731,7 +731,7 @@
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-        import { getDatabase, ref, set, onValue, onDisconnect } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
+        import { getDatabase, ref, set, update, onValue, onDisconnect } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyDcx4fwRtS_ebOZPKqYvniR_4W-uEt0zi4",
@@ -821,6 +821,45 @@
             }
         });
 
+        const treesRef = ref(db, 'trees');
+        let firstTreeSync = true;
+        onValue(treesRef, (snapshot) => {
+            const data = snapshot.val();
+            if (data) {
+                for (let id in data) {
+                    if (trees.has(id)) {
+                        let t = trees.get(id);
+                        let serverData = data[id];
+                        let serverHp = serverData.hp;
+                        
+                        if (serverHp < t.hp) {
+                            t.hp = serverHp;
+                            t.hitAngle = serverData.a || 0;
+                            
+                            if (!firstTreeSync) {
+                                t.hitTimer = 0.2;
+                                activeTrees.add(t);
+                                if (t.hp <= 0 && !t.dead) {
+                                    t.dead = true;
+                                    t.deathTimer = 0.5;
+                                    playSoundInstance(assets.treeHits, t.cx, t.cy);
+                                } else if (t.hp > 0) {
+                                    playSoundInstance(assets.treeHits, t.cx, t.cy);
+                                }
+                            } else {
+                                if (t.hp <= 0) {
+                                    t.hp = 0;
+                                    t.dead = true;
+                                    t.deathTimer = 0;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            firstTreeSync = false;
+        });
+
         window.addEventListener('contextmenu', e => e.preventDefault());
 
         const canvas = document.getElementById('gameCanvas');
@@ -883,6 +922,8 @@
 
         const mapData = new Uint8Array(MAP_COLS * MAP_ROWS);
         const waterTiles = [];
+        const trees = new Map();
+        const activeTrees = new Set();
 
         function generateMap() {
             let mapSeed = 12345;
@@ -942,6 +983,34 @@
                                 let nIdx = mapY * MAP_COLS + mapX;
                                 if (mapData[nIdx] === 0) mapData[nIdx] = 2; 
                             }
+                        }
+                    }
+                }
+            }
+
+            for (let y = 0; y < MAP_ROWS - 1; y += 2) {
+                for (let x = 0; x < MAP_COLS - 1; x += 2) {
+                    if (mapData[y * MAP_COLS + x] === 0 &&
+                        mapData[y * MAP_COLS + x + 1] === 0 &&
+                        mapData[(y + 1) * MAP_COLS + x] === 0 &&
+                        mapData[(y + 1) * MAP_COLS + x + 1] === 0) {
+                        
+                        if (seededRandom() < 0.15) {
+                            let maxHp = 5 + Math.floor(seededRandom() * 6);
+                            let treeId = x + "_" + y;
+                            trees.set(treeId, {
+                                id: treeId,
+                                x: x * TILE_SIZE,
+                                y: y * TILE_SIZE,
+                                cx: x * TILE_SIZE + TILE_SIZE,
+                                cy: y * TILE_SIZE + TILE_SIZE,
+                                hp: maxHp,
+                                maxHp: maxHp,
+                                hitAngle: 0,
+                                hitTimer: 0,
+                                deathTimer: 0,
+                                dead: false
+                            });
                         }
                     }
                 }
@@ -1300,6 +1369,72 @@
                     player.exhausted = true;
                     player.regenDelay = 5.0;
                 }
+
+                let pCX = player.x + player.width / 2;
+                let pCY = player.y + player.height / 2;
+                let hitRange = 60;
+                let hitArc = Math.PI / 1.5; 
+                
+                let closestTree = null;
+                let closestDist = Infinity;
+                
+                let tileX = Math.floor(pCX / TILE_SIZE);
+                let tileY = Math.floor(pCY / TILE_SIZE);
+                
+                for (let tr = tileY - 2; tr <= tileY + 2; tr++) {
+                    for (let tc = tileX - 2; tc <= tileX + 2; tc++) {
+                        let id = tc + "_" + tr;
+                        if (trees.has(id)) {
+                            let t = trees.get(id);
+                            if (t.hp > 0) {
+                                let testX = pCX;
+                                let testY = pCY;
+                                if (pCX < t.x) testX = t.x;
+                                else if (pCX > t.x + 128) testX = t.x + 128;
+                                if (pCY < t.y) testY = t.y;
+                                else if (pCY > t.y + 128) testY = t.y + 128;
+                                
+                                let dx = testX - pCX;
+                                let dy = testY - pCY;
+                                let distToAABB = Math.sqrt(dx*dx + dy*dy);
+                                
+                                if (distToAABB <= hitRange) {
+                                    let angleToTree = Math.atan2(t.cy - pCY, t.cx - pCX);
+                                    let angleDiff = Math.abs(player.angle - angleToTree);
+                                    while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+                                    angleDiff = Math.abs(angleDiff);
+                                    
+                                    if (angleDiff <= hitArc / 2 && distToAABB < closestDist) {
+                                        closestDist = distToAABB;
+                                        closestTree = t;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                if (closestTree) {
+                    closestTree.hp -= 1;
+                    let angleToTree = Math.atan2(closestTree.cy - pCY, closestTree.cx - pCX);
+                    closestTree.hitTimer = 0.2;
+                    closestTree.hitAngle = angleToTree;
+                    activeTrees.add(closestTree);
+                    
+                    playSoundInstance(assets.treeHits, closestTree.cx, closestTree.cy);
+                    
+                    if (closestTree.hp <= 0) {
+                        closestTree.dead = true;
+                        closestTree.deathTimer = 0.5;
+                    }
+                    
+                    update(ref(db), {
+                        [`trees/${closestTree.id}`]: {
+                            hp: closestTree.hp,
+                            a: Number(angleToTree.toFixed(2))
+                        }
+                    }).catch(() => {});
+                }
             }
         }
 
@@ -1338,6 +1473,7 @@
             leftHand: new Image(),
             rightHand: new Image(),
             sprintParticle: new Image(),
+            tree: new Image(),
             swingSound: new Audio('audio/weapon-swing.mp3'),
             grassSteps: [
                 new Audio('audio/grass-footstep-1.mp3'),
@@ -1353,13 +1489,18 @@
             swimSounds: [
                 new Audio('audio/swim-1.mp3'),
                 new Audio('audio/swim-2.mp3')
+            ],
+            treeHits: [
+                new Audio('audio/tree-hit-1.mp3'),
+                new Audio('audio/tree-hit-2.mp3'),
+                new Audio('audio/tree-hit-3.mp3')
             ]
         };
 
         let loadedCount = 0;
         function onAssetLoad() {
             loadedCount++;
-            if (loadedCount === 5) { 
+            if (loadedCount === 6) { 
                 playBtn.innerText = 'PLAY';
                 playBtn.disabled = false;
                 
@@ -1374,12 +1515,14 @@
         assets.leftHand.onload = onAssetLoad;
         assets.rightHand.onload = onAssetLoad;
         assets.sprintParticle.onload = onAssetLoad;
+        assets.tree.onload = onAssetLoad;
 
         assets.tilesheet.src = 'assets/vertopia-tilesheet.png'; 
         assets.playerHead.src = 'assets/player-head.png';
         assets.leftHand.src = 'assets/player-lefthand.png';
         assets.rightHand.src = 'assets/player-righthand.png';
         assets.sprintParticle.src = 'assets/sprint-particle.png';
+        assets.tree.src = 'assets/tree.png';
 
         playBtn.addEventListener('click', () => {
             let inputName = nameInput.value.trim();
@@ -1429,6 +1572,23 @@
                 if (player.chatTimer > 0) player.chatTimer -= dt;
                 for (let id in otherPlayers) {
                     if (otherPlayers[id].chatTimer > 0) otherPlayers[id].chatTimer -= dt;
+                }
+
+                for (let t of activeTrees) {
+                    if (t.hitTimer > 0) {
+                        t.hitTimer -= dt;
+                        if (t.hitTimer <= 0) t.hitTimer = 0;
+                    }
+                    if (t.dead && t.deathTimer > 0) {
+                        t.deathTimer -= dt;
+                        if (t.deathTimer <= 0) {
+                            t.deathTimer = 0;
+                            activeTrees.delete(t);
+                        }
+                    }
+                    if (!t.dead && t.hitTimer === 0) {
+                        activeTrees.delete(t);
+                    }
                 }
 
                 for (let i = particles.length - 1; i >= 0; i--) {
@@ -1569,8 +1729,43 @@
                 let r = player.width / 2;
                 let cx = player.x + r;
                 let cy = player.y + r;
-                let minRadius = 40;
+                
+                let pTileX = Math.floor(cx / TILE_SIZE);
+                let pTileY = Math.floor(cy / TILE_SIZE);
+                for (let tr = pTileY - 2; tr <= pTileY + 2; tr++) {
+                    for (let tc = pTileX - 2; tc <= pTileX + 2; tc++) {
+                        let id = tc + "_" + tr;
+                        if (trees.has(id)) {
+                            let t = trees.get(id);
+                            if (t.hp > 0) {
+                                let testX = cx;
+                                let testY = cy;
+                                if (cx < t.x) testX = t.x;
+                                else if (cx > t.x + 128) testX = t.x + 128;
+                                if (cy < t.y) testY = t.y;
+                                else if (cy > t.y + 128) testY = t.y + 128;
+                                
+                                let distX = cx - testX;
+                                let distY = cy - testY;
+                                let distance = Math.sqrt(distX*distX + distY*distY);
+                                
+                                if (distance < r) {
+                                    let overlap = r - distance;
+                                    if (distance === 0) {
+                                        player.y -= overlap;
+                                    } else {
+                                        player.x += (distX / distance) * overlap;
+                                        player.y += (distY / distance) * overlap;
+                                    }
+                                    cx = player.x + r;
+                                    cy = player.y + r;
+                                }
+                            }
+                        }
+                    }
+                }
 
+                let minRadius = 40;
                 for (let id in otherPlayers) {
                     let p = otherPlayers[id];
                     let pcx = p.x + r;
@@ -1864,6 +2059,45 @@
             ctx.translate(Math.round(width / 2), Math.round(height / 2));
             ctx.scale(currentZoom, currentZoom);
             ctx.translate(-focusX, -focusY);
+
+            let tStartCol = startCol - 1;
+            let tEndCol = endCol + 1;
+            let tStartRow = startRow - 1;
+            let tEndRow = endRow + 1;
+            
+            for (let r = tStartRow; r <= tEndRow; r++) {
+                for (let c = tStartCol; c <= tEndCol; c++) {
+                    let id = c + "_" + r;
+                    if (trees.has(id)) {
+                        let t = trees.get(id);
+                        if (t.hp > 0 || (t.dead && t.deathTimer > 0)) {
+                            ctx.save();
+                            
+                            let drawX = t.cx;
+                            let drawY = t.cy;
+                            
+                            if (t.hitTimer > 0) {
+                                let bounceDist = Math.sin((t.hitTimer / 0.2) * Math.PI) * 12;
+                                drawX += Math.cos(t.hitAngle) * bounceDist;
+                                drawY += Math.sin(t.hitAngle) * bounceDist;
+                            }
+                            
+                            ctx.translate(drawX, drawY);
+                            
+                            if (t.dead) {
+                                let progress = 1.0 - (t.deathTimer / 0.5);
+                                let scale = 1.0 + progress * 0.5;
+                                let alpha = 1.0 - progress;
+                                ctx.scale(scale, scale);
+                                ctx.globalAlpha = alpha;
+                            }
+                            
+                            ctx.drawImage(assets.tree, -64, -64, 128, 128);
+                            ctx.restore();
+                        }
+                    }
+                }
+            }
 
             if (gameState === 'PLAYING') {
                 particles.forEach(p => {
