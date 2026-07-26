@@ -555,7 +555,7 @@
     <div id="uiLayer">
         <div id="mainMenu">
             <h1>VERTOPIA.IO</h1>
-            <div class="version-text">v1.10</div>
+            <div class="version-text">v1.0.9</div>
             <input type="text" id="playerNameInput" placeholder="Your name" maxlength="15" autocomplete="off">
             <button id="playBtn" disabled>LOADING...</button>
         </div>
@@ -761,50 +761,75 @@
             
             if (data) {
                 for (let id in data) {
-                    if (id !== myPlayerId) {
-                        validIds.add(id);
-                        allPlayers.push({ name: data[id].name || "Vertopian" });
+                    if (id === myPlayerId) {
+                        if (data[id].hitEvent && data[id].hitEvent.t !== player.lastHitT) {
+                            player.lastHitT = data[id].hitEvent.t;
+                            player.health -= data[id].hitEvent.d;
+                            player.stunTimer = 0.2; 
+                            
+                            spawnBloodParticles(player.x + player.width / 2, player.y + player.height / 2, player.width);
+                            
+                            if (player.health <= 0) {
+                                player.health = 100;
+                                player.x = MAP_CENTER * TILE_SIZE; 
+                                player.y = MAP_CENTER * TILE_SIZE;
+                                player.forceSync = true;
+                            }
+                        }
+                        continue;
+                    }
+                    
+                    validIds.add(id);
+                    allPlayers.push({ name: data[id].name || "Vertopian" });
+                    
+                    if (!otherPlayers[id]) {
+                        otherPlayers[id] = {
+                            x: data[id].x,
+                            y: data[id].y,
+                            angle: data[id].angle,
+                            targetX: data[id].x,
+                            targetY: data[id].y,
+                            targetAngle: data[id].angle,
+                            sprint: data[id].sprint || false,
+                            name: data[id].name,
+                            attackCounter: data[id].attack || 0,
+                            swingTimer: 0,
+                            nextHand: 'right',
+                            footstepTimer: 0,
+                            particleTimer: 0,
+                            currentStepSound: null,
+                            chatMessage: "",
+                            chatTimer: 0,
+                            lastChatT: 0,
+                            blocking: data[id].blocking || false,
+                            blockAmount: 0,
+                            lastHitT: 0
+                        };
+                    } else {
+                        otherPlayers[id].targetX = data[id].x;
+                        otherPlayers[id].targetY = data[id].y;
+                        otherPlayers[id].targetAngle = data[id].angle;
+                        otherPlayers[id].sprint = data[id].sprint || false;
+                        otherPlayers[id].name = data[id].name;
+                        otherPlayers[id].blocking = data[id].blocking || false;
                         
-                        if (!otherPlayers[id]) {
-                            otherPlayers[id] = {
-                                x: data[id].x,
-                                y: data[id].y,
-                                angle: data[id].angle,
-                                targetX: data[id].x,
-                                targetY: data[id].y,
-                                targetAngle: data[id].angle,
-                                sprint: data[id].sprint || false,
-                                name: data[id].name,
-                                attackCounter: data[id].attack || 0,
-                                swingTimer: 0,
-                                nextHand: 'right',
-                                footstepTimer: 0,
-                                particleTimer: 0,
-                                currentStepSound: null,
-                                chatMessage: "",
-                                chatTimer: 0,
-                                lastChatT: 0
-                            };
-                        } else {
-                            otherPlayers[id].targetX = data[id].x;
-                            otherPlayers[id].targetY = data[id].y;
-                            otherPlayers[id].targetAngle = data[id].angle;
-                            otherPlayers[id].sprint = data[id].sprint || false;
-                            otherPlayers[id].name = data[id].name;
-                            
-                            if (data[id].attack !== undefined && data[id].attack !== otherPlayers[id].attackCounter) {
-                                otherPlayers[id].attackCounter = data[id].attack;
-                                otherPlayers[id].swingTimer = 0.001;
-                                let px = otherPlayers[id].x + player.width / 2;
-                                let py = otherPlayers[id].y + player.height / 2;
-                                playSound(assets.swingSound, px, py);
-                            }
-                            
-                            if (data[id].chat && data[id].chat.t !== otherPlayers[id].lastChatT) {
-                                otherPlayers[id].chatMessage = data[id].chat.msg;
-                                otherPlayers[id].chatTimer = 4.0;
-                                otherPlayers[id].lastChatT = data[id].chat.t;
-                            }
+                        if (data[id].attack !== undefined && data[id].attack !== otherPlayers[id].attackCounter) {
+                            otherPlayers[id].attackCounter = data[id].attack;
+                            otherPlayers[id].swingTimer = 0.001;
+                            let px = otherPlayers[id].x + player.width / 2;
+                            let py = otherPlayers[id].y + player.height / 2;
+                            playSound(assets.swingSound, px, py);
+                        }
+                        
+                        if (data[id].chat && data[id].chat.t !== otherPlayers[id].lastChatT) {
+                            otherPlayers[id].chatMessage = data[id].chat.msg;
+                            otherPlayers[id].chatTimer = 4.0;
+                            otherPlayers[id].lastChatT = data[id].chat.t;
+                        }
+
+                        if (data[id].hitEvent && data[id].hitEvent.t !== otherPlayers[id].lastHitT) {
+                            otherPlayers[id].lastHitT = data[id].hitEvent.t;
+                            spawnBloodParticles(otherPlayers[id].x + player.width / 2, otherPlayers[id].y + player.height / 2, player.width);
                         }
                     }
                 }
@@ -990,7 +1015,7 @@
 
             for (let y = 0; y < MAP_ROWS - 1; y += 7) {
                 for (let x = 0; x < MAP_COLS - 1; x += 7) {
-                    if (seededRandom() < 0.2) { 
+                    if (seededRandom() < 0.25) { 
                         let ox = Math.floor(seededRandom() * 5);
                         let oy = Math.floor(seededRandom() * 5);
                         let tx = x + ox;
@@ -1065,7 +1090,11 @@
             chatMessage: "",
             chatTimer: 0,
             chatPayload: null,
-            forceSync: false
+            forceSync: false,
+            isBlocking: false,
+            blockAmount: 0,
+            stunTimer: 0,
+            lastHitT: 0
         };
 
         let activeSlot = 0; 
@@ -1073,6 +1102,7 @@
         const keys = { w: false, a: false, s: false, d: false, shift: false };
         const mouse = { x: width / 2, y: height / 2 };
         let isMouseDown = false; 
+        let isRightMouseDown = false;
 
         let spawnGridX = 0;
         let spawnGridZ = 0;
@@ -1186,7 +1216,9 @@
                 angle: 0,
                 name: player.name,
                 sprint: false,
-                attack: 0
+                attack: 0,
+                blocking: false,
+                health: player.health
             });
 
             spawnMenuUI.style.display = 'none';
@@ -1365,6 +1397,29 @@
             return sound;
         }
 
+        function spawnBloodParticles(cx, cy, pWidth) {
+            particles.push({
+                type: 'blood_splash',
+                x: cx,
+                y: cy,
+                size: pWidth * 1.05,
+                alpha: 1.0,
+                life: 0.8,
+                maxLife: 0.8
+            });
+            for (let i = 0; i < 4; i++) {
+                particles.push({
+                    type: 'blood_drop',
+                    x: cx + (Math.random() - 0.5) * 30,
+                    y: cy + (Math.random() - 0.5) * 30,
+                    size: 10 + Math.random() * 10,
+                    alpha: 1.0,
+                    life: 0.3 + Math.random() * 0.2,
+                    maxLife: 0.5
+                });
+            }
+        }
+
         function attemptAttack() {
             if (player.swingTimer <= 0 && player.cooldownTimer <= 0 && player.energy >= 5) {
                 player.swingTimer = 0.001; 
@@ -1384,8 +1439,9 @@
                 let hitRange = 60;
                 let hitArc = Math.PI / 1.5; 
                 
-                let closestTree = null;
+                let closestTarget = null;
                 let closestDist = Infinity;
+                let targetType = null;
                 
                 let tileX = Math.floor(pCX / TILE_SIZE);
                 let tileY = Math.floor(pCY / TILE_SIZE);
@@ -1415,7 +1471,8 @@
                                     
                                     if (angleDiff <= hitArc / 2 && distToAABB < closestDist) {
                                         closestDist = distToAABB;
-                                        closestTree = t;
+                                        closestTarget = t;
+                                        targetType = 'tree';
                                     }
                                 }
                             }
@@ -1423,42 +1480,78 @@
                     }
                 }
                 
-                if (closestTree) {
-                    closestTree.hp -= 1;
-                    let angleToTree = Math.atan2(closestTree.cy - pCY, closestTree.cx - pCX);
-                    closestTree.hitTimer = 0.2;
-                    closestTree.hitAngle = angleToTree;
-                    activeTrees.add(closestTree);
+                for (let id in otherPlayers) {
+                    let op = otherPlayers[id];
+                    let opCX = op.x + player.width / 2;
+                    let opCY = op.y + player.height / 2;
                     
-                    playSoundInstance(assets.treeHits, closestTree.cx, closestTree.cy);
+                    let dx = opCX - pCX;
+                    let dy = opCY - pCY;
+                    let distToAABB = Math.sqrt(dx*dx + dy*dy);
                     
-                    if (closestTree.hp <= 0) {
-                        closestTree.dead = true;
-                        closestTree.deathTimer = 0.5;
+                    if (distToAABB <= hitRange) {
+                        let angleToOp = Math.atan2(dy, dx);
+                        let angleDiff = Math.abs(player.angle - angleToOp);
+                        while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+                        angleDiff = Math.abs(angleDiff);
+                        
+                        if (angleDiff <= hitArc / 2 && distToAABB < closestDist) {
+                            closestDist = distToAABB;
+                            closestTarget = op;
+                            closestTarget.id = id;
+                            targetType = 'player';
+                        }
+                    }
+                }
+                
+                if (targetType === 'tree') {
+                    closestTarget.hp -= 1;
+                    let angleToTree = Math.atan2(closestTarget.cy - pCY, closestTarget.cx - pCX);
+                    closestTarget.hitTimer = 0.2;
+                    closestTarget.hitAngle = angleToTree;
+                    activeTrees.add(closestTarget);
+                    
+                    playSoundInstance(assets.treeHits, closestTarget.cx, closestTarget.cy);
+                    
+                    if (closestTarget.hp <= 0) {
+                        closestTarget.dead = true;
+                        closestTarget.deathTimer = 0.5;
                     }
                     
                     fbUpdate(ref(db), {
-                        [`trees/${closestTree.id}`]: {
-                            hp: closestTree.hp,
+                        [`trees/${closestTarget.id}`]: {
+                            hp: closestTarget.hp,
                             a: Number(angleToTree.toFixed(2))
+                        }
+                    }).catch(() => {});
+                } else if (targetType === 'player') {
+                    let damage = closestTarget.blocking ? 4 : 8;
+                    fbUpdate(ref(db), {
+                        [`players/${closestTarget.id}/hitEvent`]: {
+                            d: damage,
+                            t: Date.now(),
+                            a: myPlayerId
                         }
                     }).catch(() => {});
                 }
             }
         }
 
-        window.addEventListener('blur', () => { isMouseDown = false; });
+        window.addEventListener('blur', () => { 
+            isMouseDown = false; 
+            isRightMouseDown = false;
+        });
 
         window.addEventListener('mousedown', (e) => {
-            if (gameState === 'PLAYING' && e.button === 0 && e.target === canvas) {
-                isMouseDown = true;
+            if (gameState === 'PLAYING' && e.target === canvas) {
+                if (e.button === 0) isMouseDown = true;
+                if (e.button === 2) isRightMouseDown = true;
             }
         });
 
         window.addEventListener('mouseup', (e) => {
-            if (e.button === 0) {
-                isMouseDown = false;
-            }
+            if (e.button === 0) isMouseDown = false;
+            if (e.button === 2) isRightMouseDown = false;
         });
 
         window.addEventListener('wheel', (e) => {
@@ -1482,6 +1575,7 @@
             leftHand: new Image(),
             rightHand: new Image(),
             sprintParticle: new Image(),
+            bloodParticle: new Image(),
             tree: new Image(),
             swingSound: new Audio('audio/weapon-swing.mp3'),
             grassSteps: [
@@ -1509,7 +1603,7 @@
         let loadedCount = 0;
         function onAssetLoad() {
             loadedCount++;
-            if (loadedCount === 6) { 
+            if (loadedCount === 7) { 
                 playBtn.innerText = 'PLAY';
                 playBtn.disabled = false;
                 
@@ -1524,6 +1618,7 @@
         assets.leftHand.onload = onAssetLoad;
         assets.rightHand.onload = onAssetLoad;
         assets.sprintParticle.onload = onAssetLoad;
+        assets.bloodParticle.onload = onAssetLoad;
         assets.tree.onload = onAssetLoad;
 
         assets.tilesheet.src = 'assets/vertopia-tilesheet.png'; 
@@ -1531,6 +1626,7 @@
         assets.leftHand.src = 'assets/player-lefthand.png';
         assets.rightHand.src = 'assets/player-righthand.png';
         assets.sprintParticle.src = 'assets/sprint-particle.png';
+        assets.bloodParticle.src = 'assets/blood-particle.png';
         assets.tree.src = 'assets/tree.png';
 
         playBtn.addEventListener('click', () => {
@@ -1574,7 +1670,37 @@
                 menuAngle += 0.08 * dt; 
             } else if (gameState === 'PLAYING') {
                 
-                if (isMouseDown) {
+                if (player.stunTimer > 0) player.stunTimer -= dt;
+                
+                if (isRightMouseDown && player.energy > 0 && player.swingTimer <= 0) {
+                    player.isBlocking = true;
+                    player.energy -= 10 * dt;
+                    player.regenDelay = Math.max(player.regenDelay, 1.5);
+                    if (player.energy <= 0) {
+                        player.energy = 0;
+                        player.exhausted = true;
+                        player.isBlocking = false;
+                    }
+                } else {
+                    player.isBlocking = false;
+                }
+
+                if (player.isBlocking) {
+                    player.blockAmount = Math.min(1.0, player.blockAmount + dt * 8.0);
+                } else {
+                    player.blockAmount = Math.max(0.0, player.blockAmount - dt * 8.0);
+                }
+
+                for (let id in otherPlayers) {
+                    let op = otherPlayers[id];
+                    if (op.blocking) {
+                        op.blockAmount = Math.min(1.0, op.blockAmount + dt * 8.0);
+                    } else {
+                        op.blockAmount = Math.max(0.0, op.blockAmount - dt * 8.0);
+                    }
+                }
+
+                if (isMouseDown && player.stunTimer <= 0 && !player.isBlocking) {
                     attemptAttack();
                 }
 
@@ -1650,7 +1776,7 @@
                         p.alpha = ratio * 1.0; 
                         if (p.isWater) {
                             p.size = 24 + (1 - ratio) * 60;
-                        } else {
+                        } else if (!p.type) {
                             p.size = ratio * 48; 
                         }
                     }
@@ -1703,7 +1829,7 @@
                     player.speed = isSprinting ? 288 : 192;
                 }
 
-                if (isSprinting) {
+                if (isSprinting && !player.isBlocking) {
                     player.energy -= 20 * dt; 
                     player.regenDelay = Math.max(player.regenDelay, 1.5);
                     if (player.energy <= 0) {
@@ -1735,7 +1861,7 @@
                         player.exhausted = false;
                     }
                 } else {
-                    if (!isSprinting && player.energy < 100) {
+                    if (!isSprinting && !player.isBlocking && player.energy < 100) {
                         player.energy += 15 * dt; 
                         if (player.energy > 100) player.energy = 100;
                     }
@@ -1744,7 +1870,7 @@
                 energyFill.style.width = player.energy + '%';
                 healthFill.style.width = player.health + '%';
 
-                if (isMoving) {
+                if (isMoving && player.stunTimer <= 0) {
                     let moveX = dx * player.speed * dt;
                     let moveY = dy * player.speed * dt;
 
@@ -1932,20 +2058,21 @@
 
                 let now = performance.now();
                 if (now - lastSyncTime > 50) { 
-                    if (isMoving || lastAngle !== player.angle || player.sprintActive !== false || player.forceSync) {
+                    if (isMoving || lastAngle !== player.angle || player.sprintActive !== false || player.forceSync || player.isBlocking) {
                         let syncData = {
                             x: Math.round(player.x),
                             y: Math.round(player.y),
                             angle: Number(player.angle.toFixed(2)),
                             name: player.name,
                             sprint: player.sprintActive,
-                            attack: player.attackCounter
+                            attack: player.attackCounter,
+                            blocking: player.isBlocking
                         };
                         if (player.chatPayload) {
                             syncData.chat = player.chatPayload;
                         }
                         
-                        set(myPlayerRef, syncData);
+                        fbUpdate(myPlayerRef, syncData);
                         lastSyncTime = now;
                         lastAngle = player.angle;
                         player.forceSync = false;
@@ -2145,10 +2272,18 @@
             if (gameState === 'PLAYING') {
                 particles.forEach(p => {
                     ctx.save();
-                    ctx.globalAlpha = p.alpha;
                     ctx.translate(p.x, p.y);
                     
-                    if (p.isWater) {
+                    if (p.type === 'blood_splash') {
+                        let ratio = 1.0 - (p.life / p.maxLife); 
+                        let currentSize = p.size * (1.0 + ratio * 0.5); 
+                        ctx.globalAlpha = p.life / p.maxLife;
+                        ctx.drawImage(assets.bloodParticle, -currentSize/2, -currentSize/2, currentSize, currentSize);
+                    } else if (p.type === 'blood_drop') {
+                        ctx.globalAlpha = p.life / p.maxLife;
+                        ctx.drawImage(assets.bloodParticle, -p.size/2, -p.size/2, p.size, p.size);
+                    } else if (p.isWater) {
+                        ctx.globalAlpha = p.alpha;
                         ctx.drawImage(assets.sprintParticle, -p.size/2, -p.size/2, p.size, p.size);
                         
                         ctx.beginPath();
@@ -2160,10 +2295,8 @@
                         ctx.strokeStyle = "rgba(0, 255, 255, " + p.alpha + ")";
                         ctx.stroke();
                     } else {
-                        ctx.drawImage(
-                            assets.sprintParticle,
-                            -p.size / 2, -p.size / 2, p.size, p.size
-                        );
+                        ctx.globalAlpha = p.alpha;
+                        ctx.drawImage(assets.sprintParticle, -p.size / 2, -p.size / 2, p.size, p.size);
                     }
                     ctx.restore();
                 });
@@ -2198,9 +2331,17 @@
                         }
                     }
                     
+                    let bAmt = p.blockAmount;
+                    pRightPunch += 6 * bAmt;
+                    pRightInward += -19 * bAmt;
+                    pRightHandTilt += -0.8 * bAmt;
+                    pLeftPunch += 6 * bAmt;
+                    pLeftInward += 19 * bAmt;
+                    pLeftHandTilt += 0.8 * bAmt;
+
                     const baseHandX = 24; 
                     const baseHandY = 24; 
-                    let pIdleOffset = p.swingTimer <= 0 ? Math.sin(performance.now() / 400) * 1.5 : 0;
+                    let pIdleOffset = p.swingTimer <= 0 && bAmt === 0 ? Math.sin(performance.now() / 400) * 1.5 : 0;
 
                     ctx.save();
                     ctx.rotate(p.angle);
@@ -2267,9 +2408,17 @@
                     }
                 }
 
+                let bAmt = player.blockAmount;
+                rightPunch += 6 * bAmt;
+                rightInward += -19 * bAmt;
+                rightHandTilt += -0.8 * bAmt;
+                leftPunch += 6 * bAmt;
+                leftInward += 19 * bAmt;
+                leftHandTilt += 0.8 * bAmt;
+
                 const baseHandX = 24; 
                 const baseHandY = 24; 
-                let idleOffset = player.swingTimer <= 0 ? Math.sin(performance.now() / 400) * 1.5 : 0;
+                let idleOffset = player.swingTimer <= 0 && bAmt === 0 ? Math.sin(performance.now() / 400) * 1.5 : 0;
 
                 ctx.save();
                 ctx.rotate(player.angle);
