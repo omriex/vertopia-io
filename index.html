@@ -555,7 +555,7 @@
     <div id="uiLayer">
         <div id="mainMenu">
             <h1>VERTOPIA.IO</h1>
-            <div class="version-text">v1.0.8</div>
+            <div class="version-text">v1.10</div>
             <input type="text" id="playerNameInput" placeholder="Your name" maxlength="15" autocomplete="off">
             <button id="playBtn" disabled>LOADING...</button>
         </div>
@@ -731,7 +731,7 @@
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-        import { getDatabase, ref, set, update, onValue, onDisconnect } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
+        import { getDatabase, ref, set, update as fbUpdate, onValue, onDisconnect } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyDcx4fwRtS_ebOZPKqYvniR_4W-uEt0zi4",
@@ -988,29 +988,38 @@
                 }
             }
 
-            for (let y = 0; y < MAP_ROWS - 1; y += 2) {
-                for (let x = 0; x < MAP_COLS - 1; x += 2) {
-                    if (mapData[y * MAP_COLS + x] === 0 &&
-                        mapData[y * MAP_COLS + x + 1] === 0 &&
-                        mapData[(y + 1) * MAP_COLS + x] === 0 &&
-                        mapData[(y + 1) * MAP_COLS + x + 1] === 0) {
+            for (let y = 0; y < MAP_ROWS - 1; y += 7) {
+                for (let x = 0; x < MAP_COLS - 1; x += 7) {
+                    if (seededRandom() < 0.2) { 
+                        let ox = Math.floor(seededRandom() * 5);
+                        let oy = Math.floor(seededRandom() * 5);
+                        let tx = x + ox;
+                        let ty = y + oy;
                         
-                        if (seededRandom() < 0.15) {
-                            let maxHp = 5 + Math.floor(seededRandom() * 6);
-                            let treeId = x + "_" + y;
-                            trees.set(treeId, {
-                                id: treeId,
-                                x: x * TILE_SIZE,
-                                y: y * TILE_SIZE,
-                                cx: x * TILE_SIZE + TILE_SIZE,
-                                cy: y * TILE_SIZE + TILE_SIZE,
-                                hp: maxHp,
-                                maxHp: maxHp,
-                                hitAngle: 0,
-                                hitTimer: 0,
-                                deathTimer: 0,
-                                dead: false
-                            });
+                        if (tx < MAP_COLS - 1 && ty < MAP_ROWS - 1) {
+                            if (mapData[ty * MAP_COLS + tx] === 0 &&
+                                mapData[ty * MAP_COLS + tx + 1] === 0 &&
+                                mapData[(ty + 1) * MAP_COLS + tx] === 0 &&
+                                mapData[(ty + 1) * MAP_COLS + tx + 1] === 0) {
+                                
+                                let maxHp = 5 + Math.floor(seededRandom() * 6);
+                                let treeId = tx + "_" + ty;
+                                trees.set(treeId, {
+                                    id: treeId,
+                                    x: tx * TILE_SIZE,
+                                    y: ty * TILE_SIZE,
+                                    cx: tx * TILE_SIZE + TILE_SIZE,
+                                    cy: ty * TILE_SIZE + TILE_SIZE,
+                                    hp: maxHp,
+                                    maxHp: maxHp,
+                                    hitAngle: 0,
+                                    hitTimer: 0,
+                                    deathTimer: 0,
+                                    dead: false,
+                                    visibleState: 0,
+                                    inView: false
+                                });
+                            }
                         }
                     }
                 }
@@ -1428,7 +1437,7 @@
                         closestTree.deathTimer = 0.5;
                     }
                     
-                    update(ref(db), {
+                    fbUpdate(ref(db), {
                         [`trees/${closestTree.id}`]: {
                             hp: closestTree.hp,
                             a: Number(angleToTree.toFixed(2))
@@ -1574,6 +1583,30 @@
                     if (otherPlayers[id].chatTimer > 0) otherPlayers[id].chatTimer -= dt;
                 }
 
+                let focusX = player.x + (player.width / 2) + cameraPanOffset.x;
+                let focusY = player.y + (player.height / 2) + cameraPanOffset.y;
+                const visibleWidth = width / currentZoom;
+                const visibleHeight = height / currentZoom;
+                const startCol = Math.floor((focusX - visibleWidth / 2) / TILE_SIZE) - 2;
+                const endCol = Math.ceil((focusX + visibleWidth / 2) / TILE_SIZE) + 2;
+                const startRow = Math.floor((focusY - visibleHeight / 2) / TILE_SIZE) - 2;
+                const endRow = Math.ceil((focusY + visibleHeight / 2) / TILE_SIZE) + 2;
+
+                for (let r = startRow; r <= endRow; r++) {
+                    for (let c = startCol; c <= endCol; c++) {
+                        let id = c + "_" + r;
+                        if (trees.has(id)) {
+                            let t = trees.get(id);
+                            if (!t.dead || t.deathTimer > 0) {
+                                if (!t.inView) {
+                                    t.inView = true;
+                                    activeTrees.add(t);
+                                }
+                            }
+                        }
+                    }
+                }
+
                 for (let t of activeTrees) {
                     if (t.hitTimer > 0) {
                         t.hitTimer -= dt;
@@ -1581,12 +1614,28 @@
                     }
                     if (t.dead && t.deathTimer > 0) {
                         t.deathTimer -= dt;
-                        if (t.deathTimer <= 0) {
-                            t.deathTimer = 0;
-                            activeTrees.delete(t);
+                        if (t.deathTimer <= 0) t.deathTimer = 0;
+                    }
+                    
+                    let ptC = Math.floor(t.x / TILE_SIZE);
+                    let ptR = Math.floor(t.y / TILE_SIZE);
+                    let actuallyInView = (ptC >= startCol && ptC <= endCol && ptR >= startRow && ptR <= endRow);
+                    
+                    if (actuallyInView && !t.dead) {
+                        t.inView = true;
+                        if (t.visibleState < 1.0) {
+                            t.visibleState += dt * 5.0; 
+                            if (t.visibleState > 1.0) t.visibleState = 1.0;
+                        }
+                    } else {
+                        t.inView = false;
+                        if (t.visibleState > 0.0) {
+                            t.visibleState -= dt * 5.0;
+                            if (t.visibleState < 0.0) t.visibleState = 0.0;
                         }
                     }
-                    if (!t.dead && t.hitTimer === 0) {
+                    
+                    if (!t.inView && t.visibleState === 0 && t.deathTimer <= 0 && t.hitTimer <= 0) {
                         activeTrees.delete(t);
                     }
                 }
@@ -2060,42 +2109,36 @@
             ctx.scale(currentZoom, currentZoom);
             ctx.translate(-focusX, -focusY);
 
-            let tStartCol = startCol - 1;
-            let tEndCol = endCol + 1;
-            let tStartRow = startRow - 1;
-            let tEndRow = endRow + 1;
-            
-            for (let r = tStartRow; r <= tEndRow; r++) {
-                for (let c = tStartCol; c <= tEndCol; c++) {
-                    let id = c + "_" + r;
-                    if (trees.has(id)) {
-                        let t = trees.get(id);
-                        if (t.hp > 0 || (t.dead && t.deathTimer > 0)) {
-                            ctx.save();
-                            
-                            let drawX = t.cx;
-                            let drawY = t.cy;
-                            
-                            if (t.hitTimer > 0) {
-                                let bounceDist = Math.sin((t.hitTimer / 0.2) * Math.PI) * 12;
-                                drawX += Math.cos(t.hitAngle) * bounceDist;
-                                drawY += Math.sin(t.hitAngle) * bounceDist;
-                            }
-                            
-                            ctx.translate(drawX, drawY);
-                            
-                            if (t.dead) {
-                                let progress = 1.0 - (t.deathTimer / 0.5);
-                                let scale = 1.0 + progress * 0.5;
-                                let alpha = 1.0 - progress;
-                                ctx.scale(scale, scale);
-                                ctx.globalAlpha = alpha;
-                            }
-                            
-                            ctx.drawImage(assets.tree, -64, -64, 128, 128);
-                            ctx.restore();
-                        }
+            for (let t of activeTrees) {
+                if (t.visibleState > 0 || t.deathTimer > 0) {
+                    ctx.save();
+                    let drawX = t.cx;
+                    let drawY = t.cy;
+                    
+                    if (t.hitTimer > 0) {
+                        let bounceDist = Math.sin((t.hitTimer / 0.2) * Math.PI) * 12;
+                        drawX += Math.cos(t.hitAngle) * bounceDist;
+                        drawY += Math.sin(t.hitAngle) * bounceDist;
                     }
+                    
+                    ctx.translate(drawX, drawY);
+                    
+                    let scale = 1.0;
+                    let alpha = 1.0;
+                    
+                    if (t.dead) {
+                        let progress = 1.0 - (t.deathTimer / 0.5);
+                        scale = t.visibleState + progress * 0.5;
+                        alpha = (1.0 - progress) * t.visibleState;
+                    } else {
+                        scale = t.visibleState;
+                        alpha = t.visibleState;
+                    }
+                    
+                    ctx.scale(scale, scale);
+                    ctx.globalAlpha = alpha;
+                    ctx.drawImage(assets.tree, -64, -64, 128, 128);
+                    ctx.restore();
                 }
             }
 
