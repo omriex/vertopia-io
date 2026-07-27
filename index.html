@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    
+    <meta property="og:title" content="Vertopia.io">
+    <meta property="og:description" content="An inspired multiplayer io game">
+    <meta property="og:image" content="https://omriex.github.io/vertopia-io/Vertopia.png">
+    <meta property="og:url" content="https://omriex.github.io/vertopia-io/">
+    <meta name="theme-color" content="#4CAF50">
+    <meta name="twitter:card" content="summary_large_image">
+    
+    <title>Vertopia.io</title>
+    <link rel="icon" type="image/png" href="Vertopia.png">
+    <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+    <canvas id="gameCanvas" tabindex="0"></canvas>
+
+    <div id="uiLayer">
+        <div id="turnstileOverlay">
+            <div class="cf-turnstile" data-sitekey="0x4AAAAAAD_AIacd7oAQE9Ue" data-callback="onTurnstileSuccess"></div>
+        </div>
+        <div id="mainMenu">
+            <button id="loginBtn">
+                <svg viewBox="0 0 24 24">
+                    <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.27-4.74 3.27-8.1z"/>
+                    <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                    <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+                    <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+                </svg>
+                <span class="login-text">Login</span>
+            </button>
+            <h1>VERTOPIA.IO</h1>
+            <div class="version-text">v1.0.9</div>
+            <input type="text" id="playerNameInput" placeholder="Your name" maxlength="15" autocomplete="off">
+            <button id="playBtn" disabled>LOADING...</button>
+        </div>
+        
+        <div id="locationOverlay">
+            <button class="loc-btn loc-btn-pick" id="btnPickLocation">
+                <svg viewBox="0 0 24 24"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>
+                PICK LOCATION
+            </button>
+            <button class="loc-btn loc-btn-spawn" id="btnSpawnHere">
+                <svg viewBox="0 0 24 24"><path d="M20 12l-1.41-1.41L13 16.17V4h-2v12.17l-5.58-5.59L4 12l8 8 8-8z"/></svg>
+                SPAWN HERE
+            </button>
+        </div>
+
+        <div id="spawnMenuUI" class="spawn-menu-wrapper" style="display:none;">
+            <button class="sm-close-btn" id="smCloseBtn">
+                <svg viewBox="0 0 24 24"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+            </button>
+            
+            <div id="sm-left">
+                <div class="sm-top-controls">
+                    <button class="sm-arrow-btn" id="smUp">
+                        <svg viewBox="0 0 24 24"><path d="M12 4l-8 8h6v8h4v-8h6z"/></svg>
+                    </button>
+                </div>
+                <div class="sm-mid-controls">
+                    <button class="sm-arrow-btn" id="smLeft">
+                        <svg viewBox="0 0 24 24"><path d="M4 12l8 8v-6h8v-4h-8V4z"/></svg>
+                    </button>
+                    <div id="sm-grid"></div>
+                    <button class="sm-arrow-btn" id="smRight">
+                        <svg viewBox="0 0 24 24"><path d="M20 12l-8-8v6H4v4h8v6z"/></svg>
+                    </button>
+                </div>
+                <div class="sm-bot-controls">
+                    <button class="sm-arrow-btn" id="smDown">
+                        <svg viewBox="0 0 24 24"><path d="M12 20l8-8h-6V4h-4v8H4z"/></svg>
+                    </button>
+                </div>
+            </div>
+            
+            <div id="sm-right">
+                <div class="sm-main-btn btn-bed" id="smBed">
+                    <svg viewBox="0 0 24 24"><path d="M12 4l-1.41 1.41L16.17 11H4v2h12.17l-5.58 5.59L12 20l8-8z"/></svg>
+                    YOUR BED
+                </div>
+                
+                <hr class="sm-hr">
+                
+                <div class="sm-title">REGION</div>
+                <div class="sm-field"><span>X:</span><input type="number" id="smRegX" class="sm-input" value="0"></div>
+                <div class="sm-field"><span>Z:</span><input type="number" id="smRegZ" class="sm-input" value="0"></div>
+                
+                <hr class="sm-hr">
+                
+                <div class="sm-title">LOCATION (±50)</div>
+                <div class="sm-field"><span>X:</span><div class="sm-readonly" id="smLocX">0</div></div>
+                <div class="sm-field"><span>Z:</span><div class="sm-readonly" id="smLocZ">0</div></div>
+                
+                <div class="sm-main-btn btn-rand" id="smRand">
+                    <svg viewBox="0 0 24 24"><path d="M12 4l-1.41 1.41L16.17 11H4v2h12.17l-5.58 5.59L12 20l8-8z"/></svg>
+                    RANDOM
+                </div>
+                <div class="sm-main-btn btn-prev" id="smPrev">
+                    <svg viewBox="0 0 24 24"><path d="M12 4l-1.41 1.41L16.17 11H4v2h12.17l-5.58 5.59L12 20l8-8z"/></svg>
+                    <span style="font-size:24px;font-weight:bold;margin-right:5px;line-height:1;">?</span> PREVIEW
+                </div>
+            </div>
+        </div>
+
+        <div id="craftingUI" class="spawn-menu-wrapper">
+            <div style="display: flex; flex-direction: row; align-items: center; justify-content: center; width: 100%; gap: 40px;">
+                <div style="display: flex; flex-direction: row; align-items: center; gap: 15px;">
+                    <div class="crafting-grid craft-1x3">
+                        <div class="inventory-slot"></div>
+                        <div class="inventory-slot"></div>
+                        <div class="inventory-slot"></div>
+                    </div>
+                    <canvas id="previewCanvas" width="100" height="130" style="background-color: rgba(0, 0, 0, 0.4); border-radius: 5px; border: 3px solid rgba(128,128,128,0.5);"></canvas>
+                </div>
+                
+                <div style="display: flex; flex-direction: row; align-items: center; gap: 15px;">
+                    <div class="crafting-grid craft-2x2">
+                        <div class="inventory-slot"></div>
+                        <div class="inventory-slot"></div>
+                        <div class="inventory-slot"></div>
+                        <div class="inventory-slot"></div>
+                    </div>
+                    
+                    <svg width="40" height="40" viewBox="0 0 24 24" fill="rgba(255, 255, 255, 0.6)">
+                        <path d="M4 11h10.586l-4.293-4.293 1.414-1.414L19.414 12l-7.707 7.707-1.414-1.414L14.586 13H4v-2z"/>
+                    </svg>
+                    
+                    <div class="inventory-slot"></div>
+                </div>
+            </div>
+            
+            <div class="crafting-grid craft-6x2">
+                <div class="inventory-slot"></div><div class="inventory-slot"></div><div class="inventory-slot"></div><div class="inventory-slot"></div><div class="inventory-slot"></div><div class="inventory-slot"></div>
+                <div class="inventory-slot"></div><div class="inventory-slot"></div><div class="inventory-slot"></div><div class="inventory-slot"></div><div class="inventory-slot"></div><div class="inventory-slot"></div>
+            </div>
+
+            <div style="display: flex; justify-content: center; margin-top: 10px;">
+                <div class="crafting-grid craft-5x1" id="craftingInventory">
+                    <div class="inventory-slot active"></div>
+                    <div class="inventory-slot"></div>
+                    <div class="inventory-slot"></div>
+                    <div class="inventory-slot"></div>
+                    <div class="inventory-slot"></div>
+                </div>
+            </div>
+        </div>
+
+        <div id="chatInputContainer">
+            <input type="text" id="chatInput" placeholder="Type something..." maxlength="60" autocomplete="off">
+        </div>
+
+        <div id="minimapContainer">
+            <div id="minimapDot"></div>
+        </div>
+
+        <div id="coordsContainer">
+            <div class="coord-x">X: <span id="coordX">0</span></div>
+            <div class="coord-y">Z: <span id="coordZ">0</span></div>
+        </div>
+
+        <div id="perfContainer">
+            <div>FPS: <span id="fpsValue">0</span></div>
+            <div>PING: <span id="pingValue">0</span></div>
+        </div>
+
+        <div id="craftBtnContainer">
+            <svg viewBox="0 0 24 24" fill="white" width="24" height="24">
+                <path d="M22.7 14.3L21.7 15.3 19.3 12.9 20.3 11.9C20.5 11.7 20.9 11.7 21.1 11.9L22.7 13.5C22.9 13.7 22.9 14.1 22.7 14.3M13 19.9V22H15.1L21.2 15.9 19.1 13.8 13 19.9M11.6 15.4L11.1 14.9C10.7 14.5 10.7 13.9 11.1 13.5L14.7 9.9 11.9 7.1C10.3 8.7 8.3 10.1 6.1 11.1 5.9 10.1 5 9.1 4 9C4 9 4.3 6.9 5.8 4.6 7 2.7 9.1 1.7 9.1 1.7 8.3 2.5 7.9 3.5 8.1 4.5 9.4 4.5 10.5 5.2 11.2 6.4L14 9.2 15.4 7.8C15.8 7.4 15.8 6.8 15.4 6.4L14.9 5.9 16.3 4.5C16.7 4.1 17.3 4.1 17.7 4.5L19.5 6.3C19.9 6.7 19.9 7.3 19.5 7.7L18.1 9.1 17.6 8.6C17.2 8.2 16.6 8.2 16.2 8.6L14.8 10 17.6 12.8C18.8 12.1 19.5 11 19.5 11 19.5 11 18.5 13.1 16.6 14.3 14.3 15.8 12.2 17.8 10.6 20 10.5 19 9.5 18.1 8.5 18 8.5 18 8.8 15.9 10.3 13.6 9.5 13 8.9 12 8.9 11 8.9 10.4 9.1 9.9 9.4 9.5L11.6 11.7C12.3 12.4 12.3 13.6 11.6 14.3L11.6 15.4Z"/>
+            </svg>
+        </div>
+
+        <div id="homeBtnContainer">
+            <svg viewBox="0 0 24 24" fill="white" width="24" height="24">
+                <path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/>
+            </svg>
+        </div>
+
+        <div id="leaderboardContainer">
+            <div id="leaderboardHeader">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <svg viewBox="0 0 24 24" fill="white" width="20" height="20">
+                        <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
+                    </svg>
+                    <span>Players</span>
+                </div>
+                <button id="leaderboardToggleBtn">▼</button>
+            </div>
+            <div id="listWrapper">
+                <ol id="leaderboardList"></ol>
+            </div>
+        </div>
+
+        <div id="statsContainer">
+            <div class="stat-row">
+                <svg class="stat-icon health-icon" viewBox="0 0 24 24" fill="#ff3333"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
+                <div class="stat-bar-bg"><div class="stat-fill health-fill" id="healthFill"></div></div>
+            </div>
+            <div class="stat-row">
+                <svg class="stat-icon energy-icon" viewBox="0 0 24 24" fill="#ffcc00"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+                <div class="stat-bar-bg"><div class="stat-fill energy-fill" id="energyFill"></div></div>
+            </div>
+        </div>
+
+        <div id="inventory">
+            <div class="inventory-slot active"></div>
+            <div class="inventory-slot"></div>
+            <div class="inventory-slot"></div>
+            <div class="inventory-slot"></div>
+            <div class="inventory-slot"></div>
+        </div>
+    </div>
+
+    <script type="module" src="js/game.js"></script>
+</body>
+</html>
