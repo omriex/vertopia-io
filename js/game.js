@@ -251,7 +251,8 @@
         const leaderboardToggleBtn = document.getElementById('leaderboardToggleBtn');
         const listWrapper = document.getElementById('listWrapper');
         const minimapContainer = document.getElementById('minimapContainer');
-        const minimapDot = document.getElementById('minimapDot');
+        const minimapCanvas = document.getElementById('minimapCanvas');
+        const minCtx = minimapCanvas.getContext('2d');
         const statsContainer = document.getElementById('statsContainer');
         const energyFill = document.getElementById('energyFill');
         const healthFill = document.getElementById('healthFill');
@@ -358,9 +359,9 @@
                 }
             }
 
-            for (let y = 0; y < MAP_ROWS - 1; y += 7) {
-                for (let x = 0; x < MAP_COLS - 1; x += 7) {
-                    if (seededRandom() < 0.390625) { 
+            for (let y = 0; y < MAP_ROWS - 1; y += 6) {
+                for (let x = 0; x < MAP_COLS - 1; x += 6) {
+                    if (seededRandom() < 0.95) { 
                         let ox = Math.floor(seededRandom() * 5);
                         let oy = Math.floor(seededRandom() * 5);
                         let tx = x + ox;
@@ -1497,10 +1498,28 @@
                 player.x = Math.max(0, Math.min(player.x, maxX));
                 player.y = Math.max(0, Math.min(player.y, maxY));
 
-                const percentX = (player.x + (player.width / 2)) / (MAP_COLS * TILE_SIZE);
-                const percentY = (player.y + (player.height / 2)) / (MAP_ROWS * TILE_SIZE);
-                minimapDot.style.left = `${percentX * 100}%`;
-                minimapDot.style.top = `${percentY * 100}%`;
+                minCtx.clearRect(0, 0, 160, 160);
+                let pTileX = Math.floor((player.x + (player.width / 2)) / TILE_SIZE);
+                let pTileY = Math.floor((player.y + (player.height / 2)) / TILE_SIZE);
+                
+                let viewRadius = 8;
+                for (let y = -viewRadius; y <= viewRadius; y++) {
+                    for (let x = -viewRadius; x <= viewRadius; x++) {
+                        let tx = pTileX + x;
+                        let ty = pTileY + y;
+                        if (tx >= 0 && tx < MAP_COLS && ty >= 0 && ty < MAP_ROWS) {
+                            let tileVal = mapData[ty * MAP_COLS + tx];
+                            let srcX = (tileVal % 10) * TILE_SIZE;
+                            let srcY = Math.floor(tileVal / 10) * TILE_SIZE;
+                            minCtx.drawImage(assets.tilesheet, srcX, srcY, TILE_SIZE, TILE_SIZE, (x + viewRadius) * 10, (y + viewRadius) * 10, 10, 10);
+                        }
+                    }
+                }
+                
+                minCtx.fillStyle = 'white';
+                minCtx.beginPath();
+                minCtx.arc(80, 80, 3, 0, Math.PI * 2);
+                minCtx.fill();
                 
                 coordX.innerText = Math.floor(player.x / TILE_SIZE) - MAP_CENTER;
                 coordZ.innerText = Math.floor(player.y / TILE_SIZE) - MAP_CENTER;
