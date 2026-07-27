@@ -55,6 +55,7 @@
             background-color: rgba(0, 0, 0, 0.5);
             padding: 50px 100px;
             border-radius: 15px;
+            position: relative;
         }
 
         h1 {
@@ -547,6 +548,47 @@
         #chatInput::placeholder {
             color: #aaa;
         }
+
+        #turnstileOverlay {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            pointer-events: auto;
+            z-index: 50;
+        }
+
+        #loginBtn {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 18px;
+            background-color: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 8px;
+            color: white;
+            font-size: 0.9rem;
+            font-weight: bold;
+            cursor: pointer;
+            font-family: inherit;
+            transition: transform 0.15s ease-in-out, background-color 0.15s;
+            backface-visibility: hidden;
+            transform: translateZ(0);
+        }
+
+        #loginBtn:hover {
+            transform: scale(0.95) translateZ(0);
+            background-color: rgba(255, 255, 255, 0.2);
+        }
+
+        #loginBtn svg {
+            width: 20px;
+            height: 20px;
+            flex-shrink: 0;
+        }
     </style>
 </head>
 <body>
@@ -554,11 +596,22 @@
     <canvas id="gameCanvas" tabindex="0"></canvas>
 
     <div id="uiLayer">
+        <div id="turnstileOverlay">
+            <div class="cf-turnstile" data-sitekey="0x4AAAAAAD_AIacd7oAQE9Ue" data-callback="onTurnstileSuccess"></div>
+        </div>
         <div id="mainMenu">
+            <button id="loginBtn">
+                <svg viewBox="0 0 24 24">
+                    <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.27-4.74 3.27-8.1z"/>
+                    <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                    <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+                    <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+                </svg>
+                <span class="login-text">Login</span>
+            </button>
             <h1>VERTOPIA.IO</h1>
             <div class="version-text">v1.0.9</div>
             <input type="text" id="playerNameInput" placeholder="Your name" maxlength="15" autocomplete="off">
-            <div class="cf-turnstile" data-sitekey="0x4AAAAAAD_AIacd7oAQE9Ue" data-callback="onTurnstileSuccess" style="margin-bottom: 25px;"></div>
             <button id="playBtn" disabled>LOADING...</button>
         </div>
         
@@ -734,6 +787,7 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
         import { getDatabase, ref, set, update as fbUpdate, onValue, onDisconnect } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
+        import { getAuth, signInWithPopup, signOut, onAuthStateChanged, GoogleAuthProvider } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
 
         const CURRENT_VERSION = "v1.0.9";
 
@@ -760,6 +814,8 @@
 
         const app = initializeApp(firebaseConfig);
         const db = getDatabase(app);
+        const auth = getAuth(app);
+        const googleProvider = new GoogleAuthProvider();
         
         const myPlayerId = Math.random().toString(36).substring(2, 15);
         const myPlayerRef = ref(db, `players/${myPlayerId}`);
@@ -1081,7 +1137,7 @@
 
             for (let y = 0; y < MAP_ROWS - 1; y += 7) {
                 for (let x = 0; x < MAP_COLS - 1; x += 7) {
-                    if (seededRandom() < 0.3125) { 
+                    if (seededRandom() < 0.390625) { 
                         let ox = Math.floor(seededRandom() * 5);
                         let oy = Math.floor(seededRandom() * 5);
                         let tx = x + ox;
@@ -1667,6 +1723,8 @@
         
         window.onTurnstileSuccess = function() {
             turnstileSolved = true;
+            let overlay = document.getElementById('turnstileOverlay');
+            if (overlay) overlay.style.display = 'none';
             checkCanPlay();
         };
 
@@ -1677,7 +1735,7 @@
         }
         
         function checkCanPlay() {
-            if (loadedCount === 6 && turnstileSolved && !gameLoopStarted) {
+            if (loadedCount >= 6 && turnstileSolved && !gameLoopStarted) {
                 gameLoopStarted = true;
                 playBtn.innerText = 'PLAY';
                 playBtn.disabled = false;
@@ -1688,19 +1746,23 @@
             }
         }
 
-        assets.tilesheet.onload = onAssetLoad;
-        assets.playerHead.onload = onAssetLoad;
-        assets.leftHand.onload = onAssetLoad;
-        assets.rightHand.onload = onAssetLoad;
-        assets.sprintParticle.onload = onAssetLoad;
-        assets.tree.onload = onAssetLoad;
+        function setupAsset(img, src) {
+            let counted = false;
+            function count() {
+                if (!counted) { counted = true; onAssetLoad(); }
+            }
+            img.onload = count;
+            img.onerror = count;
+            img.src = src;
+            if (img.complete) count();
+        }
 
-        assets.tilesheet.src = 'assets/vertopia-tilesheet.png'; 
-        assets.playerHead.src = 'assets/player-head.png';
-        assets.leftHand.src = 'assets/player-lefthand.png';
-        assets.rightHand.src = 'assets/player-righthand.png';
-        assets.sprintParticle.src = 'assets/sprint-particle.png';
-        assets.tree.src = 'assets/tree.png';
+        setupAsset(assets.tilesheet, 'assets/vertopia-tilesheet.png');
+        setupAsset(assets.playerHead, 'assets/player-head.png');
+        setupAsset(assets.leftHand, 'assets/player-lefthand.png');
+        setupAsset(assets.rightHand, 'assets/player-righthand.png');
+        setupAsset(assets.sprintParticle, 'assets/sprint-particle.png');
+        setupAsset(assets.tree, 'assets/tree.png');
 
         playBtn.addEventListener('click', () => {
             let inputName = nameInput.value.trim();
@@ -1729,6 +1791,26 @@
             player.kbVx = 0;
             player.kbVy = 0;
             player.lastDamageTime = Date.now();
+        });
+
+        document.getElementById('loginBtn').addEventListener('click', () => {
+            if (auth.currentUser) {
+                signOut(auth);
+            } else {
+                signInWithPopup(auth, googleProvider).catch(() => {});
+            }
+        });
+
+        onAuthStateChanged(auth, (user) => {
+            const loginText = document.querySelector('#loginBtn .login-text');
+            if (user) {
+                loginText.textContent = 'Logout';
+                if (user.displayName && !nameInput.value.trim()) {
+                    nameInput.value = user.displayName.substring(0, 15);
+                }
+            } else {
+                loginText.textContent = 'Login';
+            }
         });
 
         let currentPing = 0;
