@@ -13,6 +13,7 @@
     
     <title>Vertopia.io</title>
     <link rel="icon" type="image/png" href="Vertopia.png">
+    <script src="https://www.google.com/recaptcha/api.js" async defer></script>
     <style>
         * {
             margin: 0;
@@ -557,6 +558,7 @@
             <h1>VERTOPIA.IO</h1>
             <div class="version-text">v1.0.9</div>
             <input type="text" id="playerNameInput" placeholder="Your name" maxlength="15" autocomplete="off">
+            <div class="g-recaptcha" data-sitekey="6LeowGctAAAAAAZsCtUVwneP9k5mMLa_oLX_X7ml" data-callback="onCaptchaSolved" data-theme="dark" style="margin-bottom: 25px;"></div>
             <button id="playBtn" disabled>LOADING...</button>
         </div>
         
@@ -785,6 +787,20 @@
             }
         }
 
+        function spawnBloodDrops(cx, cy) {
+            for (let i = 0; i < 4; i++) {
+                particles.push({
+                    type: 'blood_drop',
+                    x: cx + (Math.random() - 0.5) * 30,
+                    y: cy + (Math.random() - 0.5) * 30,
+                    size: 9 + Math.random() * 9,
+                    alpha: 1.0,
+                    life: 0.15 + Math.random() * 0.1,
+                    maxLife: 0.25
+                });
+            }
+        }
+
         const playersRef = ref(db, 'players');
         onValue(playersRef, (snapshot) => {
             const data = snapshot.val();
@@ -792,7 +808,6 @@
             allPlayers = [{ name: player.name }];
             
             if (data) {
-                const now = performance.now();
                 const realNow = Date.now();
                 
                 for (let id in data) {
@@ -842,6 +857,9 @@
                     }
                     
                     let remoteT = data[id].t || 0;
+                    if (realNow - remoteT > 10000) {
+                        continue;
+                    }
                     
                     if (!otherPlayers[id]) {
                         otherPlayers[id] = {
@@ -859,8 +877,7 @@
                             footstepTimer: 0,
                             particleTimer: 0,
                             currentStepSound: null,
-                            chatMessage: "",
-                            chatTimer: 0,
+                            chatMessages: [],
                             lastChatT: 0,
                             blocking: data[id].blocking || false,
                             blockAmount: 0,
@@ -868,21 +885,9 @@
                             health: data[id].health !== undefined ? data[id].health : 100,
                             dead: (data[id].health !== undefined ? data[id].health : 100) <= 0,
                             deathTimer: 0,
-                            lastRemoteT: remoteT,
-                            lastSeenLocalT: now,
-                            zombie: false
+                            bloodSplashTimer: 0
                         };
                     } else {
-                        if (remoteT !== otherPlayers[id].lastRemoteT) {
-                            otherPlayers[id].lastRemoteT = remoteT;
-                            otherPlayers[id].lastSeenLocalT = now;
-                            otherPlayers[id].zombie = false;
-                        }
-                        
-                        if (now - otherPlayers[id].lastSeenLocalT > 10000) {
-                            otherPlayers[id].zombie = true;
-                        }
-                        
                         otherPlayers[id].targetX = data[id].x;
                         otherPlayers[id].targetY = data[id].y;
                         otherPlayers[id].targetAngle = data[id].angle;
@@ -909,22 +914,27 @@
                         }
                         
                         if (data[id].chat && data[id].chat.t !== otherPlayers[id].lastChatT) {
-                            otherPlayers[id].chatMessage = data[id].chat.msg;
-                            otherPlayers[id].chatTimer = 4.0;
+                            otherPlayers[id].chatMessages.push({
+                                msg: data[id].chat.msg,
+                                timer: 4.0,
+                                maxTime: 4.0
+                            });
+                            if (otherPlayers[id].chatMessages.length > 3) {
+                                otherPlayers[id].chatMessages.shift();
+                            }
                             otherPlayers[id].lastChatT = data[id].chat.t;
                         }
 
                         if (data[id].hitEvent && data[id].hitEvent.t !== otherPlayers[id].lastHitT) {
                             otherPlayers[id].lastHitT = data[id].hitEvent.t;
-                            spawnBloodParticles(otherPlayers[id].x + player.width / 2, otherPlayers[id].y + player.height / 2);
+                            otherPlayers[id].bloodSplashTimer = 0.4;
+                            spawnBloodDrops(otherPlayers[id].x + player.width / 2, otherPlayers[id].y + player.height / 2);
                             playSoundInstance(assets.damageSounds, otherPlayers[id].x + player.width / 2, otherPlayers[id].y + player.height / 2);
                         }
                     }
                     
                     validIds.add(id);
-                    if (!otherPlayers[id].zombie) {
-                        allPlayers.push({ name: data[id].name || "Vertopian" });
-                    }
+                    allPlayers.push({ name: data[id].name || "Vertopian" });
                 }
             }
             
@@ -1180,8 +1190,7 @@
             currentStepSound: null,
             particleTimer: 0,
             attackCounter: 0,
-            chatMessage: "",
-            chatTimer: 0,
+            chatMessages: [],
             chatPayload: null,
             forceSync: false,
             isBlocking: false,
@@ -1193,7 +1202,8 @@
             killedBy: null,
             kbVx: 0,
             kbVy: 0,
-            lastDamageTime: Date.now()
+            lastDamageTime: Date.now(),
+            bloodSplashTimer: 0
         };
 
         let activeSlot = 0; 
@@ -1313,6 +1323,7 @@
             player.energy = 100;
             player.damageNegationTimer = 0;
             player.lastDamageTime = Date.now();
+            player.bloodSplashTimer = 0;
 
             set(myPlayerRef, {
                 x: Math.round(player.x),
@@ -1421,8 +1432,8 @@
                         let msg = document.getElementById('chatInput').value.trim();
                         if (msg !== "") {
                             player.chatPayload = { msg: msg, t: Date.now() };
-                            player.chatMessage = msg;
-                            player.chatTimer = 4.0;
+                            player.chatMessages.push({ msg: msg, timer: 4.0, maxTime: 4.0 });
+                            if (player.chatMessages.length > 3) player.chatMessages.shift();
                             player.forceSync = true;
                         }
                         document.getElementById('chatInput').value = "";
@@ -1564,7 +1575,7 @@
                 
                 for (let id in otherPlayers) {
                     let op = otherPlayers[id];
-                    if (op.dead || op.zombie) continue;
+                    if (op.dead) continue;
                     let opCX = op.x + player.width / 2;
                     let opCY = op.y + player.height / 2;
                     
@@ -1691,12 +1702,28 @@
             ]
         };
 
+        let assetsLoaded = false;
+        let isCaptchaSolved = false;
+
+        window.onCaptchaSolved = function() {
+            isCaptchaSolved = true;
+            if (assetsLoaded) {
+                playBtn.innerText = 'PLAY';
+                playBtn.disabled = false;
+            }
+        };
+
         let loadedCount = 0;
         function onAssetLoad() {
             loadedCount++;
             if (loadedCount === 7) { 
-                playBtn.innerText = 'PLAY';
-                playBtn.disabled = false;
+                assetsLoaded = true;
+                if (isCaptchaSolved) {
+                    playBtn.innerText = 'PLAY';
+                    playBtn.disabled = false;
+                } else {
+                    playBtn.innerText = 'SOLVE CAPTCHA';
+                }
                 
                 lastLogicTime = performance.now();
                 setInterval(logicLoop, 1000 / 60);
@@ -1771,6 +1798,7 @@
                 
                 if (player.damageNegationTimer > 0) player.damageNegationTimer -= dt;
                 if (player.dead && player.deathTimer > 0) player.deathTimer -= dt;
+                if (player.bloodSplashTimer > 0) player.bloodSplashTimer -= dt;
                 
                 if (!player.dead) {
                     if (isRightMouseDown && player.swingTimer <= 0) {
@@ -1804,7 +1832,6 @@
 
                 for (let id in otherPlayers) {
                     let op = otherPlayers[id];
-                    if (op.zombie) continue;
                     if (op.blocking) {
                         op.blockAmount = Math.min(1.0, op.blockAmount + dt * 8.0);
                     } else {
@@ -1816,15 +1843,25 @@
                     attemptAttack();
                 }
 
-                if (player.chatTimer > 0) player.chatTimer -= dt;
+                for (let i = player.chatMessages.length - 1; i >= 0; i--) {
+                    player.chatMessages[i].timer -= dt;
+                    if (player.chatMessages[i].timer <= 0) {
+                        player.chatMessages.splice(i, 1);
+                    }
+                }
+
                 for (let id in otherPlayers) {
-                    if (otherPlayers[id].zombie) continue;
-                    if (otherPlayers[id].chatTimer > 0) otherPlayers[id].chatTimer -= dt;
+                    for (let i = otherPlayers[id].chatMessages.length - 1; i >= 0; i--) {
+                        otherPlayers[id].chatMessages[i].timer -= dt;
+                        if (otherPlayers[id].chatMessages[i].timer <= 0) {
+                            otherPlayers[id].chatMessages.splice(i, 1);
+                        }
+                    }
                 }
 
                 let focusX = player.x + (player.width / 2) + cameraPanOffset.x;
                 let focusY = player.y + (player.height / 2) + cameraPanOffset.y;
-                if (gameState === 'DEAD' && player.killedBy && otherPlayers[player.killedBy] && !otherPlayers[player.killedBy].zombie) {
+                if (gameState === 'DEAD' && player.killedBy && otherPlayers[player.killedBy]) {
                     focusX = otherPlayers[player.killedBy].x + player.width / 2;
                     focusY = otherPlayers[player.killedBy].y + player.height / 2;
                 }
@@ -1896,9 +1933,14 @@
                             p.y += p.vy * dt;
                             p.size = p.baseSize * ratio; 
                             p.alpha = ratio;
+                        } else if (p.type === 'blood_drop') {
+                            p.alpha = ratio;
                         } else if (p.isWater) {
                             p.alpha = ratio * 1.0; 
                             p.size = 24 + (1 - ratio) * 60;
+                        } else {
+                            p.alpha = ratio * 1.0;
+                            p.size = ratio * 48;
                         }
                     }
                 }
@@ -1977,7 +2019,7 @@
                             maxLife: 0.6,
                             isWater: isWater
                         });
-                        player.particleTimer = isWater && !isMoving ? 0.6 : 0.2;
+                        player.particleTimer = isWater && !player.sprintActive ? 0.75 : 0.2;
                     }
                 }
 
@@ -2076,7 +2118,7 @@
                 let minRadius = 40;
                 for (let id in otherPlayers) {
                     let p = otherPlayers[id];
-                    if (p.dead || p.zombie) continue;
+                    if (p.dead) continue;
                     let pcx = p.x + r;
                     let pcy = p.y + r;
                     
@@ -2099,11 +2141,11 @@
 
                 for (let id in otherPlayers) {
                     let p = otherPlayers[id];
-                    if (p.zombie) continue;
                     
                     if (p.dead && p.deathTimer > 0) {
                         p.deathTimer -= dt;
                     }
+                    if (p.bloodSplashTimer > 0) p.bloodSplashTimer -= dt;
 
                     let lerpSpeed = 15 * dt;
                     if (p.x === undefined) p.x = p.targetX;
@@ -2164,7 +2206,7 @@
                                 maxLife: 0.6,
                                 isWater: ptIsWater
                             });
-                            p.particleTimer = ptIsWater && !pIsMoving ? 0.6 : 0.2;
+                            p.particleTimer = ptIsWater && !p.sprint ? 0.75 : 0.2;
                         }
                     }
                 }
@@ -2274,7 +2316,7 @@
             pCtx.restore();
         }
 
-        function drawChatBubble(ctx, text, x, y, timer, maxTime = 4.0) {
+        function drawChatBubble(ctx, text, x, y, timer, maxTime = 4.0, stackIndex = 0) {
             if (timer <= 0) return;
             let alpha = 1.0;
             let slideY = 0;
@@ -2289,7 +2331,8 @@
             
             ctx.save();
             ctx.globalAlpha = alpha;
-            ctx.translate(x, y + slideY - 45); 
+            let yOffset = stackIndex * 38;
+            ctx.translate(x, y + slideY - 45 - yOffset); 
             
             ctx.font = 'bold 15px "Segoe UI", sans-serif';
             let metrics = ctx.measureText(text);
@@ -2335,7 +2378,7 @@
             let focusY = 0;
 
             if (gameState === 'PLAYING' || gameState === 'DEAD') {
-                if (gameState === 'DEAD' && player.killedBy && otherPlayers[player.killedBy] && !otherPlayers[player.killedBy].zombie) {
+                if (gameState === 'DEAD' && player.killedBy && otherPlayers[player.killedBy]) {
                     let killer = otherPlayers[player.killedBy];
                     focusX = killer.x + (player.width / 2);
                     focusY = killer.y + (player.height / 2);
@@ -2386,25 +2429,6 @@
             ctx.scale(currentZoom, currentZoom);
             ctx.translate(-focusX, -focusY);
 
-            if (gameState === 'PLAYING' || gameState === 'DEAD') {
-                particles.forEach(p => {
-                    if (p.isWater) {
-                        ctx.save();
-                        ctx.translate(p.x, p.y);
-                        ctx.globalAlpha = p.alpha;
-                        ctx.drawImage(assets.sprintParticle, -p.size/2, -p.size/2, p.size, p.size);
-                        ctx.beginPath();
-                        ctx.arc(0, 0, p.size/2 * 0.8, 0, Math.PI*2);
-                        ctx.fillStyle = "rgba(0, 255, 255, " + (p.alpha * 0.4) + ")";
-                        ctx.fill();
-                        ctx.lineWidth = 2;
-                        ctx.strokeStyle = "rgba(0, 255, 255, " + p.alpha + ")";
-                        ctx.stroke();
-                        ctx.restore();
-                    }
-                });
-            }
-
             for (let t of activeTrees) {
                 if (t.visibleState > 0 || t.deathTimer > 0) {
                     ctx.save();
@@ -2439,9 +2463,39 @@
             }
 
             if (gameState === 'PLAYING' || gameState === 'DEAD') {
+                particles.forEach(p => {
+                    if (p.type === 'blood_splash') {
+                        // Background blood splashes
+                    } else if (p.type === 'blood_drop') {
+                        ctx.save();
+                        ctx.translate(p.x, p.y);
+                        ctx.globalAlpha = p.alpha;
+                        ctx.drawImage(assets.bloodParticle, -p.size/2, -p.size/2, p.size, p.size);
+                        ctx.restore();
+                    } else if (p.isWater) {
+                        ctx.save();
+                        ctx.translate(p.x, p.y);
+                        ctx.globalAlpha = p.alpha;
+                        ctx.drawImage(assets.sprintParticle, -p.size/2, -p.size/2, p.size, p.size);
+                        ctx.beginPath();
+                        ctx.arc(0, 0, p.size/2 * 0.8, 0, Math.PI*2);
+                        ctx.fillStyle = "rgba(0, 255, 255, " + (p.alpha * 0.4) + ")";
+                        ctx.fill();
+                        ctx.lineWidth = 2;
+                        ctx.strokeStyle = "rgba(0, 255, 255, " + p.alpha + ")";
+                        ctx.stroke();
+                        ctx.restore();
+                    } else {
+                        ctx.save();
+                        ctx.translate(p.x, p.y);
+                        ctx.globalAlpha = p.alpha;
+                        ctx.drawImage(assets.sprintParticle, -p.size/2, -p.size/2, p.size, p.size);
+                        ctx.restore();
+                    }
+                });
+
                 for (let id in otherPlayers) {
                     let p = otherPlayers[id];
-                    if (p.zombie) continue;
                     ctx.save();
                     ctx.translate(p.x + (player.width / 2), p.y + (player.height / 2));
                     
@@ -2451,6 +2505,16 @@
                         ctx.globalAlpha = Math.max(0, 1.0 - progress);
                         let shrink = Math.max(0.01, 1.0 - progress);
                         ctx.scale(shrink, shrink);
+                    }
+
+                    if (p.bloodSplashTimer > 0) {
+                        let ratio = 1.0 - (p.bloodSplashTimer / 0.4); 
+                        let currentSize = player.width * 1.08 * (0.5 + ratio * 0.5); 
+                        ctx.save();
+                        ctx.rotate(p.angle);
+                        ctx.globalAlpha = p.bloodSplashTimer / 0.4;
+                        ctx.drawImage(assets.bloodParticle, -currentSize/2, -currentSize/2, currentSize, currentSize);
+                        ctx.restore();
                     }
 
                     let pHeadTilt = 0;
@@ -2525,7 +2589,14 @@
                         ctx.textAlign = 'center';
                         ctx.fillStyle = 'white';
                         ctx.fillText(p.name, p.x + (player.width / 2), p.y + player.height + 25);
-                        drawChatBubble(ctx, p.chatMessage, p.x + (player.width / 2), p.y, p.chatTimer);
+                        
+                        if (p.chatMessages) {
+                            for (let i = p.chatMessages.length - 1; i >= 0; i--) {
+                                let msgObj = p.chatMessages[i];
+                                let stackIndex = p.chatMessages.length - 1 - i; 
+                                drawChatBubble(ctx, msgObj.msg, p.x + (player.width / 2), p.y, msgObj.timer, msgObj.maxTime, stackIndex);
+                            }
+                        }
                     }
                 }
 
@@ -2538,6 +2609,16 @@
                     ctx.globalAlpha = Math.max(0, 1.0 - progress);
                     let shrink = Math.max(0.01, 1.0 - progress);
                     ctx.scale(shrink, shrink);
+                }
+
+                if (player.bloodSplashTimer > 0) {
+                    let ratio = 1.0 - (player.bloodSplashTimer / 0.4); 
+                    let currentSize = player.width * 1.08 * (0.5 + ratio * 0.5); 
+                    ctx.save();
+                    ctx.rotate(player.angle);
+                    ctx.globalAlpha = player.bloodSplashTimer / 0.4;
+                    ctx.drawImage(assets.bloodParticle, -currentSize/2, -currentSize/2, currentSize, currentSize);
+                    ctx.restore();
                 }
 
                 let headTilt = 0;
@@ -2617,7 +2698,14 @@
                     
                     ctx.fillStyle = 'white';
                     ctx.fillText(player.name, textX, textY);
-                    drawChatBubble(ctx, player.chatMessage, textX, player.y, player.chatTimer);
+                    
+                    if (player.chatMessages) {
+                        for (let i = player.chatMessages.length - 1; i >= 0; i--) {
+                            let msgObj = player.chatMessages[i];
+                            let stackIndex = player.chatMessages.length - 1 - i; 
+                            drawChatBubble(ctx, msgObj.msg, textX, player.y, msgObj.timer, msgObj.maxTime, stackIndex);
+                        }
+                    }
                 }
 
                 particles.forEach(p => {
