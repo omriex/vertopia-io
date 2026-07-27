@@ -770,8 +770,8 @@
                             let hitAngle = data[id].hitEvent.ang !== undefined ? data[id].hitEvent.ang : 0;
                             
                             if (player.isBlocking) {
-                                player.x += Math.cos(hitAngle) * 20;
-                                player.y += Math.sin(hitAngle) * 20;
+                                player.kbVx = Math.cos(hitAngle) * 300;
+                                player.kbVy = Math.sin(hitAngle) * 300;
                             }
                             
                             spawnBloodParticles(player.x + player.width / 2, player.y + player.height / 2, player.width, player.angle);
@@ -780,7 +780,7 @@
                             if (player.health <= 0 && !player.dead) {
                                 player.health = 0;
                                 player.dead = true;
-                                player.deathTimer = 0.5;
+                                player.deathTimer = 0.25;
                                 player.killedBy = data[id].hitEvent.a;
                                 player.forceSync = true;
                                 
@@ -843,7 +843,7 @@
                             otherPlayers[id].health = data[id].health;
                             if (data[id].health <= 0 && !otherPlayers[id].dead) {
                                 otherPlayers[id].dead = true;
-                                otherPlayers[id].deathTimer = 0.5;
+                                otherPlayers[id].deathTimer = 0.25;
                             } else if (data[id].health > 0) {
                                 otherPlayers[id].dead = false;
                             }
@@ -1134,7 +1134,9 @@
             lastHitT: 0,
             dead: false,
             deathTimer: 0,
-            killedBy: null
+            killedBy: null,
+            kbVx: 0,
+            kbVy: 0
         };
 
         let activeSlot = 0; 
@@ -1446,7 +1448,7 @@
                 type: 'blood_splash',
                 x: cx,
                 y: cy,
-                size: pWidth * 0.945,
+                size: pWidth * 1.08,
                 alpha: 1.0,
                 life: 0.4,
                 maxLife: 0.4,
@@ -1481,7 +1483,7 @@
 
                 let pCX = player.x + player.width / 2;
                 let pCY = player.y + player.height / 2;
-                let hitRange = 60;
+                let hitRange = 75;
                 let hitArc = Math.PI / 1.5; 
                 
                 let closestTarget = null;
@@ -1527,6 +1529,7 @@
                 
                 for (let id in otherPlayers) {
                     let op = otherPlayers[id];
+                    if (op.dead) continue;
                     let opCX = op.x + player.width / 2;
                     let opCY = op.y + player.height / 2;
                     
@@ -1706,6 +1709,8 @@
             player.health = 100;
             player.energy = 100;
             player.damageNegationTimer = 0;
+            player.kbVx = 0;
+            player.kbVy = 0;
         });
 
         let currentPing = 0;
@@ -1741,6 +1746,17 @@
                     player.isBlocking = false;
                     player.sprintActive = false;
                     keys.w = keys.a = keys.s = keys.d = keys.shift = false;
+                }
+
+                if (Math.abs(player.kbVx) > 1 || Math.abs(player.kbVy) > 1) {
+                    player.x += player.kbVx * dt;
+                    player.y += player.kbVy * dt;
+                    let friction = Math.min(15 * dt, 1);
+                    player.kbVx += (0 - player.kbVx) * friction;
+                    player.kbVy += (0 - player.kbVy) * friction;
+                } else {
+                    player.kbVx = 0;
+                    player.kbVy = 0;
                 }
 
                 if (player.isBlocking) {
@@ -2011,6 +2027,7 @@
                 let minRadius = 40;
                 for (let id in otherPlayers) {
                     let p = otherPlayers[id];
+                    if (p.dead) continue;
                     let pcx = p.x + r;
                     let pcy = p.y + r;
                     
@@ -2133,7 +2150,7 @@
 
                 let now = performance.now();
                 if (now - lastSyncTime > 50) { 
-                    if (isMoving || lastAngle !== player.angle || player.sprintActive !== false || player.forceSync || player.isBlocking) {
+                    if (isMoving || lastAngle !== player.angle || player.sprintActive !== false || player.forceSync || player.isBlocking || Math.abs(player.kbVx) > 1 || Math.abs(player.kbVy) > 1) {
                         let syncData = {
                             x: Math.round(player.x),
                             y: Math.round(player.y),
@@ -2358,7 +2375,7 @@
                     
                     if (p.type === 'blood_splash') {
                         let ratio = 1.0 - (p.life / p.maxLife); 
-                        let currentSize = p.size * (1.0 + ratio * 1.5); 
+                        let currentSize = p.size * (0.5 + ratio * 0.5); 
                         ctx.globalAlpha = p.life / p.maxLife;
                         if (p.angle !== undefined) ctx.rotate(p.angle);
                         ctx.drawImage(assets.bloodParticle, -currentSize/2, -currentSize/2, currentSize, currentSize);
@@ -2390,7 +2407,7 @@
                     ctx.translate(p.x + (player.width / 2), p.y + (player.height / 2));
                     
                     if (p.dead) {
-                        let progress = 1.0 - (p.deathTimer / 0.5);
+                        let progress = 1.0 - (p.deathTimer / 0.25);
                         if (progress > 1.0) progress = 1.0;
                         ctx.globalAlpha = Math.max(0, 1.0 - progress);
                         let shrink = Math.max(0.01, 1.0 - progress);
@@ -2477,7 +2494,7 @@
                 ctx.translate(player.x + (player.width / 2), player.y + (player.height / 2));
                 
                 if (player.dead) {
-                    let progress = 1.0 - (player.deathTimer / 0.5);
+                    let progress = 1.0 - (player.deathTimer / 0.25);
                     if (progress > 1.0) progress = 1.0;
                     ctx.globalAlpha = Math.max(0, 1.0 - progress);
                     let shrink = Math.max(0.01, 1.0 - progress);
