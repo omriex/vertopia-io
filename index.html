@@ -20,6 +20,15 @@
 
     <canvas id="gameCanvas" tabindex="0"></canvas>
 
+    <script>
+        window.turnstileSolved = false;
+        window.onTurnstileSuccess = function() {
+            window.turnstileSolved = true;
+            let overlay = document.getElementById('turnstileOverlay');
+            if (overlay) overlay.style.display = 'none';
+            if (window.checkCanPlay) window.checkCanPlay();
+        };
+    </script>
     <div id="uiLayer">
         <div id="turnstileOverlay">
             <div class="cf-turnstile" data-sitekey="0x4AAAAAAD_AIacd7oAQE9Ue" data-callback="onTurnstileSuccess"></div>
