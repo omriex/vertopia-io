@@ -765,15 +765,38 @@
                         if (data[id].hitEvent && data[id].hitEvent.t !== player.lastHitT) {
                             player.lastHitT = data[id].hitEvent.t;
                             player.health -= data[id].hitEvent.d;
-                            player.stunTimer = 0.2; 
+                            player.damageNegationTimer = 0.2;
                             
-                            spawnBloodParticles(player.x + player.width / 2, player.y + player.height / 2, player.width);
+                            let hitAngle = data[id].hitEvent.ang !== undefined ? data[id].hitEvent.ang : 0;
                             
-                            if (player.health <= 0) {
-                                player.health = 100;
-                                player.x = MAP_CENTER * TILE_SIZE; 
-                                player.y = MAP_CENTER * TILE_SIZE;
+                            if (player.isBlocking) {
+                                player.x += Math.cos(hitAngle) * 20;
+                                player.y += Math.sin(hitAngle) * 20;
+                            }
+                            
+                            spawnBloodParticles(player.x + player.width / 2, player.y + player.height / 2, player.width, player.angle);
+                            playSoundInstance(assets.damageSounds, player.x + player.width / 2, player.y + player.height / 2);
+                            
+                            if (player.health <= 0 && !player.dead) {
+                                player.health = 0;
+                                player.dead = true;
+                                player.deathTimer = 0.5;
+                                player.killedBy = data[id].hitEvent.a;
                                 player.forceSync = true;
+                                
+                                gameState = 'DEAD';
+                                document.getElementById('mainMenu').style.display = 'flex';
+                                document.getElementById('playBtn').innerText = 'RESPAWN';
+                                
+                                document.getElementById('inventory').style.display = 'none';
+                                document.getElementById('leaderboardContainer').style.display = 'none';
+                                document.getElementById('minimapContainer').style.display = 'none';
+                                document.getElementById('statsContainer').style.display = 'none';
+                                document.getElementById('coordsContainer').style.display = 'none';
+                                document.getElementById('perfContainer').style.display = 'none';
+                                document.getElementById('craftBtnContainer').style.display = 'none';
+                                document.getElementById('craftingUI').style.display = 'none';
+                                document.getElementById('chatInputContainer').style.display = 'none';
                             }
                         }
                         continue;
@@ -803,7 +826,10 @@
                             lastChatT: 0,
                             blocking: data[id].blocking || false,
                             blockAmount: 0,
-                            lastHitT: 0
+                            lastHitT: 0,
+                            health: data[id].health !== undefined ? data[id].health : 100,
+                            dead: (data[id].health !== undefined ? data[id].health : 100) <= 0,
+                            deathTimer: 0
                         };
                     } else {
                         otherPlayers[id].targetX = data[id].x;
@@ -812,6 +838,16 @@
                         otherPlayers[id].sprint = data[id].sprint || false;
                         otherPlayers[id].name = data[id].name;
                         otherPlayers[id].blocking = data[id].blocking || false;
+                        
+                        if (data[id].health !== undefined) {
+                            otherPlayers[id].health = data[id].health;
+                            if (data[id].health <= 0 && !otherPlayers[id].dead) {
+                                otherPlayers[id].dead = true;
+                                otherPlayers[id].deathTimer = 0.5;
+                            } else if (data[id].health > 0) {
+                                otherPlayers[id].dead = false;
+                            }
+                        }
                         
                         if (data[id].attack !== undefined && data[id].attack !== otherPlayers[id].attackCounter) {
                             otherPlayers[id].attackCounter = data[id].attack;
@@ -829,7 +865,8 @@
 
                         if (data[id].hitEvent && data[id].hitEvent.t !== otherPlayers[id].lastHitT) {
                             otherPlayers[id].lastHitT = data[id].hitEvent.t;
-                            spawnBloodParticles(otherPlayers[id].x + player.width / 2, otherPlayers[id].y + player.height / 2, player.width);
+                            spawnBloodParticles(otherPlayers[id].x + player.width / 2, otherPlayers[id].y + player.height / 2, player.width, data[id].angle);
+                            playSoundInstance(assets.damageSounds, otherPlayers[id].x + player.width / 2, otherPlayers[id].y + player.height / 2);
                         }
                     }
                 }
@@ -841,7 +878,7 @@
                 }
             }
 
-            if (gameState === 'PLAYING') {
+            if (gameState === 'PLAYING' || gameState === 'DEAD') {
                 updateLeaderboardUI();
             }
         });
@@ -1093,8 +1130,11 @@
             forceSync: false,
             isBlocking: false,
             blockAmount: 0,
-            stunTimer: 0,
-            lastHitT: 0
+            damageNegationTimer: 0,
+            lastHitT: 0,
+            dead: false,
+            deathTimer: 0,
+            killedBy: null
         };
 
         let activeSlot = 0; 
@@ -1209,6 +1249,10 @@
 
             player.x = spawnTileX * TILE_SIZE;
             player.y = spawnTileY * TILE_SIZE;
+            player.dead = false;
+            player.health = 100;
+            player.energy = 100;
+            player.damageNegationTimer = 0;
 
             set(myPlayerRef, {
                 x: Math.round(player.x),
@@ -1368,7 +1412,7 @@
 
         function getVolume(x, y) {
             if (x === undefined || y === undefined) return 1.0;
-            if (gameState !== 'PLAYING') return 0;
+            if (gameState !== 'PLAYING' && gameState !== 'DEAD') return 0;
             let dx = (player.x + player.width / 2) - x;
             let dy = (player.y + player.height / 2) - y;
             let dist = Math.sqrt(dx * dx + dy * dy);
@@ -1397,25 +1441,26 @@
             return sound;
         }
 
-        function spawnBloodParticles(cx, cy, pWidth) {
+        function spawnBloodParticles(cx, cy, pWidth, angle) {
             particles.push({
                 type: 'blood_splash',
                 x: cx,
                 y: cy,
-                size: pWidth * 1.05,
+                size: pWidth * 0.945,
                 alpha: 1.0,
-                life: 0.8,
-                maxLife: 0.8
+                life: 0.4,
+                maxLife: 0.4,
+                angle: angle
             });
             for (let i = 0; i < 4; i++) {
                 particles.push({
                     type: 'blood_drop',
                     x: cx + (Math.random() - 0.5) * 30,
                     y: cy + (Math.random() - 0.5) * 30,
-                    size: 10 + Math.random() * 10,
+                    size: 9 + Math.random() * 9,
                     alpha: 1.0,
-                    life: 0.3 + Math.random() * 0.2,
-                    maxLife: 0.5
+                    life: 0.15 + Math.random() * 0.1,
+                    maxLife: 0.25
                 });
             }
         }
@@ -1526,11 +1571,14 @@
                     }).catch(() => {});
                 } else if (targetType === 'player') {
                     let damage = closestTarget.blocking ? 4 : 8;
+                    if (player.damageNegationTimer > 0) damage = 0;
+                    
                     fbUpdate(ref(db), {
                         [`players/${closestTarget.id}/hitEvent`]: {
                             d: damage,
                             t: Date.now(),
-                            a: myPlayerId
+                            a: myPlayerId,
+                            ang: player.angle
                         }
                     }).catch(() => {});
                 }
@@ -1555,7 +1603,7 @@
         });
 
         window.addEventListener('wheel', (e) => {
-            if (gameState !== 'PLAYING' && gameState !== 'PREVIEW') return;
+            if (gameState !== 'PLAYING' && gameState !== 'PREVIEW' && gameState !== 'DEAD') return;
             let scrollDirection = e.deltaY > 0 ? -1 : 1; 
             let baseSpeed = 0.25;
             if (scrollDirection === 1) { 
@@ -1597,6 +1645,11 @@
                 new Audio('audio/tree-hit-1.mp3'),
                 new Audio('audio/tree-hit-2.mp3'),
                 new Audio('audio/tree-hit-3.mp3')
+            ],
+            damageSounds: [
+                new Audio('audio/damage-1.mp3'),
+                new Audio('audio/damage-2.mp3'),
+                new Audio('audio/damage-3.mp3')
             ]
         };
 
@@ -1648,6 +1701,11 @@
             
             updateSpawnInfo();
             renderSpawnGrid();
+            
+            player.dead = false;
+            player.health = 100;
+            player.energy = 100;
+            player.damageNegationTimer = 0;
         });
 
         let currentPing = 0;
@@ -1668,21 +1726,21 @@
 
             if (gameState === 'MENU') {
                 menuAngle += 0.08 * dt; 
-            } else if (gameState === 'PLAYING') {
+            } else if (gameState === 'PLAYING' || gameState === 'DEAD') {
                 
-                if (player.stunTimer > 0) player.stunTimer -= dt;
+                if (player.damageNegationTimer > 0) player.damageNegationTimer -= dt;
+                if (player.dead && player.deathTimer > 0) player.deathTimer -= dt;
                 
-                if (isRightMouseDown && player.energy > 0 && player.swingTimer <= 0) {
-                    player.isBlocking = true;
-                    player.energy -= 10 * dt;
-                    player.regenDelay = Math.max(player.regenDelay, 1.5);
-                    if (player.energy <= 0) {
-                        player.energy = 0;
-                        player.exhausted = true;
+                if (!player.dead) {
+                    if (isRightMouseDown && player.swingTimer <= 0) {
+                        player.isBlocking = true;
+                    } else {
                         player.isBlocking = false;
                     }
                 } else {
                     player.isBlocking = false;
+                    player.sprintActive = false;
+                    keys.w = keys.a = keys.s = keys.d = keys.shift = false;
                 }
 
                 if (player.isBlocking) {
@@ -1700,7 +1758,7 @@
                     }
                 }
 
-                if (isMouseDown && player.stunTimer <= 0 && !player.isBlocking) {
+                if (isMouseDown && !player.isBlocking && !player.dead) {
                     attemptAttack();
                 }
 
@@ -1711,6 +1769,11 @@
 
                 let focusX = player.x + (player.width / 2) + cameraPanOffset.x;
                 let focusY = player.y + (player.height / 2) + cameraPanOffset.y;
+                if (gameState === 'DEAD' && player.killedBy && otherPlayers[player.killedBy]) {
+                    focusX = otherPlayers[player.killedBy].x + player.width / 2;
+                    focusY = otherPlayers[player.killedBy].y + player.height / 2;
+                }
+
                 const visibleWidth = width / currentZoom;
                 const visibleHeight = height / currentZoom;
                 const startCol = Math.floor((focusX - visibleWidth / 2) / TILE_SIZE) - 2;
@@ -1795,10 +1858,12 @@
 
                 let dx = 0;
                 let dy = 0;
-                if (keys.w) dy -= 1;
-                if (keys.s) dy += 1;
-                if (keys.a) dx -= 1;
-                if (keys.d) dx += 1;
+                if (!player.dead) {
+                    if (keys.w) dy -= 1;
+                    if (keys.s) dy += 1;
+                    if (keys.a) dx -= 1;
+                    if (keys.d) dx += 1;
+                }
 
                 if (dx !== 0 && dy !== 0) {
                     const length = Math.sqrt(dx * dx + dy * dy);
@@ -1808,14 +1873,13 @@
 
                 let isMoving = dx !== 0 || dy !== 0;
 
-                if (keys.shift && isMoving && player.energy > 15 && !player.exhausted) {
+                if (keys.shift && isMoving && player.energy > 15 && !player.exhausted && !player.isBlocking) {
                     player.sprintActive = true;
                 }
-                if (!keys.shift || !isMoving || player.energy <= 0 || player.exhausted) {
+                if (!keys.shift || !isMoving || player.energy <= 0 || player.exhausted || player.isBlocking) {
                     player.sprintActive = false;
                 }
                 
-                let isSprinting = player.sprintActive;
                 let tileX = Math.floor((player.x + player.width / 2) / TILE_SIZE);
                 let tileY = Math.floor((player.y + player.height / 2) / TILE_SIZE);
                 tileX = Math.max(0, Math.min(MAP_COLS - 1, tileX));
@@ -1824,12 +1888,16 @@
                 let isWater = currentTile === 1;
 
                 if (isWater) { 
-                    player.speed = isSprinting ? 96 : 64;
+                    player.speed = player.sprintActive ? 96 : 64;
                 } else {
-                    player.speed = isSprinting ? 288 : 192;
+                    player.speed = player.sprintActive ? 288 : 192;
                 }
 
-                if (isSprinting && !player.isBlocking) {
+                if (player.isBlocking) {
+                    player.speed *= 0.75;
+                }
+
+                if (player.sprintActive && !player.isBlocking) {
                     player.energy -= 20 * dt; 
                     player.regenDelay = Math.max(player.regenDelay, 1.5);
                     if (player.energy <= 0) {
@@ -1839,7 +1907,7 @@
                     }
                 }
 
-                if (isWater || (isSprinting && isMoving)) {
+                if (isWater || (player.sprintActive && isMoving)) {
                     player.particleTimer -= dt;
                     if (player.particleTimer <= 0) {
                         particles.push({
@@ -1861,7 +1929,7 @@
                         player.exhausted = false;
                     }
                 } else {
-                    if (!isSprinting && !player.isBlocking && player.energy < 100) {
+                    if (!player.sprintActive && player.energy < 100) {
                         player.energy += 15 * dt; 
                         if (player.energy > 100) player.energy = 100;
                     }
@@ -1870,7 +1938,7 @@
                 energyFill.style.width = player.energy + '%';
                 healthFill.style.width = player.health + '%';
 
-                if (isMoving && player.stunTimer <= 0) {
+                if (isMoving) {
                     let moveX = dx * player.speed * dt;
                     let moveY = dy * player.speed * dt;
 
@@ -1889,7 +1957,7 @@
                         } else { 
                             player.currentStepSound = playSoundInstance(assets.grassSteps, player.x + player.width / 2, player.y + player.height / 2);
                         }
-                        player.footstepTimer = isSprinting ? 0.4 : 0.5; 
+                        player.footstepTimer = player.sprintActive ? 0.4 : 0.5; 
                     }
                 } else {
                     if (player.currentStepSound) {
@@ -1966,6 +2034,10 @@
                 for (let id in otherPlayers) {
                     let p = otherPlayers[id];
                     
+                    if (p.dead && p.deathTimer > 0) {
+                        p.deathTimer -= dt;
+                    }
+
                     let lerpSpeed = 15 * dt;
                     if (p.x === undefined) p.x = p.targetX;
                     if (p.y === undefined) p.y = p.targetY;
@@ -1989,6 +2061,7 @@
 
                     let distMoved = Math.sqrt((p.targetX - p.x)**2 + (p.targetY - p.y)**2);
                     let pIsMoving = distMoved > 2.0;
+                    if (p.dead) pIsMoving = false;
 
                     if (p.footstepTimer > 0) p.footstepTimer -= dt;
                     if (p.particleTimer > 0) p.particleTimer -= dt;
@@ -2054,7 +2127,9 @@
                 const screenPlayerX = (width / 2) - (cameraPanOffset.x * currentZoom);
                 const screenPlayerY = (height / 2) - (cameraPanOffset.y * currentZoom);
                 
-                player.angle = Math.atan2(mouse.y - screenPlayerY, mouse.x - screenPlayerX);
+                if (!player.dead) {
+                    player.angle = Math.atan2(mouse.y - screenPlayerY, mouse.x - screenPlayerX);
+                }
 
                 let now = performance.now();
                 if (now - lastSyncTime > 50) { 
@@ -2066,7 +2141,8 @@
                             name: player.name,
                             sprint: player.sprintActive,
                             attack: player.attackCounter,
-                            blocking: player.isBlocking
+                            blocking: player.isBlocking,
+                            health: player.health
                         };
                         if (player.chatPayload) {
                             syncData.chat = player.chatPayload;
@@ -2190,9 +2266,15 @@
             let focusX = 0;
             let focusY = 0;
 
-            if (gameState === 'PLAYING') {
-                focusX = player.x + (player.width / 2) + cameraPanOffset.x;
-                focusY = player.y + (player.height / 2) + cameraPanOffset.y;
+            if (gameState === 'PLAYING' || gameState === 'DEAD') {
+                if (gameState === 'DEAD' && player.killedBy && otherPlayers[player.killedBy]) {
+                    let killer = otherPlayers[player.killedBy];
+                    focusX = killer.x + (player.width / 2);
+                    focusY = killer.y + (player.height / 2);
+                } else {
+                    focusX = player.x + (player.width / 2) + cameraPanOffset.x;
+                    focusY = player.y + (player.height / 2) + cameraPanOffset.y;
+                }
             } else if (gameState === 'PREVIEW' || gameState === 'SPAWN_PICKER') {
                 focusX = previewX;
                 focusY = previewZ;
@@ -2269,15 +2351,16 @@
                 }
             }
 
-            if (gameState === 'PLAYING') {
+            if (gameState === 'PLAYING' || gameState === 'DEAD') {
                 particles.forEach(p => {
                     ctx.save();
                     ctx.translate(p.x, p.y);
                     
                     if (p.type === 'blood_splash') {
                         let ratio = 1.0 - (p.life / p.maxLife); 
-                        let currentSize = p.size * (1.0 + ratio * 0.5); 
+                        let currentSize = p.size * (1.0 + ratio * 1.5); 
                         ctx.globalAlpha = p.life / p.maxLife;
+                        if (p.angle !== undefined) ctx.rotate(p.angle);
                         ctx.drawImage(assets.bloodParticle, -currentSize/2, -currentSize/2, currentSize, currentSize);
                     } else if (p.type === 'blood_drop') {
                         ctx.globalAlpha = p.life / p.maxLife;
@@ -2306,6 +2389,14 @@
                     ctx.save();
                     ctx.translate(p.x + (player.width / 2), p.y + (player.height / 2));
                     
+                    if (p.dead) {
+                        let progress = 1.0 - (p.deathTimer / 0.5);
+                        if (progress > 1.0) progress = 1.0;
+                        ctx.globalAlpha = Math.max(0, 1.0 - progress);
+                        let shrink = Math.max(0.01, 1.0 - progress);
+                        ctx.scale(shrink, shrink);
+                    }
+
                     let pHeadTilt = 0;
                     let pRightPunch = 0;
                     let pLeftPunch = 0;
@@ -2373,16 +2464,26 @@
                     ctx.restore();
                     ctx.restore();
                     
-                    ctx.font = 'bold 15px "Segoe UI", sans-serif';
-                    ctx.textAlign = 'center';
-                    ctx.fillStyle = 'white';
-                    ctx.fillText(p.name, p.x + (player.width / 2), p.y + player.height + 25);
-                    drawChatBubble(ctx, p.chatMessage, p.x + (player.width / 2), p.y, p.chatTimer);
+                    if (!p.dead) {
+                        ctx.font = 'bold 15px "Segoe UI", sans-serif';
+                        ctx.textAlign = 'center';
+                        ctx.fillStyle = 'white';
+                        ctx.fillText(p.name, p.x + (player.width / 2), p.y + player.height + 25);
+                        drawChatBubble(ctx, p.chatMessage, p.x + (player.width / 2), p.y, p.chatTimer);
+                    }
                 }
 
                 ctx.save();
                 ctx.translate(player.x + (player.width / 2), player.y + (player.height / 2));
                 
+                if (player.dead) {
+                    let progress = 1.0 - (player.deathTimer / 0.5);
+                    if (progress > 1.0) progress = 1.0;
+                    ctx.globalAlpha = Math.max(0, 1.0 - progress);
+                    let shrink = Math.max(0.01, 1.0 - progress);
+                    ctx.scale(shrink, shrink);
+                }
+
                 let headTilt = 0;
                 let rightPunch = 0;
                 let leftPunch = 0;
@@ -2451,15 +2552,17 @@
                 
                 ctx.restore(); 
 
-                ctx.font = 'bold 15px "Segoe UI", sans-serif';
-                ctx.textAlign = 'center';
-                
-                const textX = player.x + (player.width / 2);
-                const textY = player.y + player.height + 25;
-                
-                ctx.fillStyle = 'white';
-                ctx.fillText(player.name, textX, textY);
-                drawChatBubble(ctx, player.chatMessage, textX, player.y, player.chatTimer);
+                if (!player.dead) {
+                    ctx.font = 'bold 15px "Segoe UI", sans-serif';
+                    ctx.textAlign = 'center';
+                    
+                    const textX = player.x + (player.width / 2);
+                    const textY = player.y + player.height + 25;
+                    
+                    ctx.fillStyle = 'white';
+                    ctx.fillText(player.name, textX, textY);
+                    drawChatBubble(ctx, player.chatMessage, textX, player.y, player.chatTimer);
+                }
             }
 
             ctx.restore();
