@@ -632,7 +632,7 @@
                 <span class="login-text">Login</span>
             </button>
             <h1>VERTOPIA.IO</h1>
-            <div class="version-text">v1.0.11</div>
+            <div class="version-text">v1.0.12</div>
             <input type="text" id="playerNameInput" placeholder="Your name" maxlength="15" autocomplete="off">
             <button id="playBtn" disabled>LOADING...</button>
         </div>
@@ -817,7 +817,7 @@
         import { getDatabase, ref, set, update as fbUpdate, onValue, onDisconnect } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
         import { getAuth, signInWithPopup, signOut, onAuthStateChanged, GoogleAuthProvider } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
 
-        const CURRENT_VERSION = "v1.0.11";
+        const CURRENT_VERSION = "v1.0.12";
 
         setInterval(async () => {
             try {
@@ -1875,7 +1875,7 @@
                 if (player.dead && player.deathTimer > 0) player.deathTimer -= dt;
                 
                 if (!player.dead) {
-                    if (isRightMouseDown && player.swingTimer <= 0) {
+                    if (isRightMouseDown && player.swingTimer <= 0 && !player.isWater) {
                         player.isBlocking = true;
                     } else {
                         player.isBlocking = false;
@@ -2092,7 +2092,7 @@
                             maxLife: 0.6,
                             isWater: isWater
                         });
-                        player.particleTimer = isWater && !player.sprintActive ? 0.75 : 0.2;
+                        player.particleTimer = isWater ? (player.sprintActive ? 0.4 : 0.75) : 0.2;
                     }
                 }
 
@@ -2284,7 +2284,7 @@
                                 maxLife: 0.6,
                                 isWater: ptIsWater
                             });
-                            p.particleTimer = ptIsWater && !p.sprint ? 0.75 : 0.2;
+                            p.particleTimer = ptIsWater ? (p.sprint ? 0.4 : 0.75) : 0.2;
                         }
                     }
                 }
@@ -2612,21 +2612,23 @@
                     
                     const baseHandX = 24; 
                     const baseHandY = 24; 
-                    let pIdleOffset = p.swingTimer <= 0 && bAmt === 0 ? Math.sin(performance.now() / 400) * 1.5 : 0;
+                    let timeDivisor = p.sprint ? 266 : 400;
+                    let pIdleOffset = p.swingTimer <= 0 && bAmt === 0 ? Math.sin(performance.now() / timeDivisor) * 1.5 : 0;
                     
                     if (p.swimTransition > 0) {
                         let trans = p.swimTransition;
-                        pRightInward += 10 * trans;
-                        pLeftInward -= 10 * trans;
-                        if (Math.abs(p.targetX - p.x) > 1 || Math.abs(p.targetY - p.y) > 1) {
-                            let swimCycle = Math.sin(performance.now() / 400);
-                            pRightPunch += swimCycle * 8 * trans;
-                            pLeftPunch -= swimCycle * 8 * trans;
-                            pRightHandTilt += swimCycle * 0.4 * trans;
-                            pLeftHandTilt += swimCycle * 0.4 * trans;
-                            pRightInward += Math.cos(performance.now() / 400) * 3 * trans;
-                            pLeftInward -= Math.cos(performance.now() / 400) * 3 * trans;
-                        }
+                        pRightInward += 7 * trans;
+                        pLeftInward -= 7 * trans;
+                        let swimCycle = Math.sin(performance.now() / timeDivisor);
+                        
+                        pRightPunch += -swimCycle * 6 * trans;
+                        pLeftPunch += -swimCycle * 6 * trans;
+                        
+                        pRightInward += swimCycle * 4 * trans;
+                        pLeftInward -= swimCycle * 4 * trans;
+                        
+                        pRightHandTilt += swimCycle * 0.4 * trans;
+                        pLeftHandTilt -= swimCycle * 0.4 * trans;
                     }
 
                     ctx.save();
@@ -2721,21 +2723,24 @@
 
                 const baseHandX = 24; 
                 const baseHandY = 24; 
-                let idleOffset = player.swingTimer <= 0 && bAmt === 0 ? Math.sin(performance.now() / 400) * 1.5 : 0;
+                let timeDivisor = player.sprintActive ? 266 : 400;
+                let idleOffset = player.swingTimer <= 0 && bAmt === 0 ? Math.sin(performance.now() / timeDivisor) * 1.5 : 0;
                 
                 if (player.swimTransition > 0) {
                     let trans = player.swimTransition;
-                    rightInward += 10 * trans;
-                    leftInward -= 10 * trans;
-                    if (keys.w || keys.a || keys.s || keys.d) {
-                        let swimCycle = Math.sin(performance.now() / 400);
-                        rightPunch += swimCycle * 8 * trans;
-                        leftPunch -= swimCycle * 8 * trans;
-                        rightHandTilt += swimCycle * 0.4 * trans;
-                        leftHandTilt += swimCycle * 0.4 * trans;
-                        rightInward += Math.cos(performance.now() / 400) * 3 * trans;
-                        leftInward -= Math.cos(performance.now() / 400) * 3 * trans;
-                    }
+                    rightInward += 7 * trans;
+                    leftInward -= 7 * trans;
+                    
+                    let swimCycle = Math.sin(performance.now() / timeDivisor);
+                    
+                    rightPunch += -swimCycle * 6 * trans;
+                    leftPunch += -swimCycle * 6 * trans;
+                    
+                    rightInward += swimCycle * 4 * trans;
+                    leftInward -= swimCycle * 4 * trans;
+                    
+                    rightHandTilt += swimCycle * 0.4 * trans;
+                    leftHandTilt -= swimCycle * 0.4 * trans;
                 }
 
                 ctx.save();
