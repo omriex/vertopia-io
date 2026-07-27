@@ -457,6 +457,27 @@
             transform: scale(0.95) translateZ(0);
         }
 
+        #homeBtnContainer {
+            display: none;
+            position: absolute;
+            top: 120px;
+            left: 260px;
+            width: 44px;
+            height: 44px;
+            background-color: rgba(0, 0, 0, 0.5);
+            border-radius: 10px;
+            pointer-events: auto;
+            cursor: pointer;
+            transition: transform 0.15s ease-in-out;
+            align-items: center;
+            justify-content: center;
+            backface-visibility: hidden;
+            transform: translateZ(0);
+        }
+        #homeBtnContainer:hover {
+            transform: scale(0.95) translateZ(0);
+        }
+
         #leaderboardContainer {
             display: none;
             position: absolute;
@@ -611,7 +632,7 @@
                 <span class="login-text">Login</span>
             </button>
             <h1>VERTOPIA.IO</h1>
-            <div class="version-text">v1.0.9</div>
+            <div class="version-text">v1.0.10</div>
             <input type="text" id="playerNameInput" placeholder="Your name" maxlength="15" autocomplete="off">
             <button id="playBtn" disabled>LOADING...</button>
         </div>
@@ -750,6 +771,12 @@
             </svg>
         </div>
 
+        <div id="homeBtnContainer">
+            <svg viewBox="0 0 24 24" fill="white" width="24" height="24">
+                <path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/>
+            </svg>
+        </div>
+
         <div id="leaderboardContainer">
             <div id="leaderboardHeader">
                 <div style="display: flex; align-items: center; gap: 8px;">
@@ -790,7 +817,7 @@
         import { getDatabase, ref, set, update as fbUpdate, onValue, onDisconnect } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
         import { getAuth, signInWithPopup, signOut, onAuthStateChanged, GoogleAuthProvider } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
 
-        const CURRENT_VERSION = "v1.0.9";
+        const CURRENT_VERSION = "v1.0.10";
 
         setInterval(async () => {
             try {
@@ -869,7 +896,6 @@
                                 
                                 gameState = 'DEAD';
                                 document.getElementById('mainMenu').style.display = 'flex';
-                                document.getElementById('playBtn').innerText = 'RESPAWN';
                                 
                                 document.getElementById('inventory').style.display = 'none';
                                 document.getElementById('leaderboardContainer').style.display = 'none';
@@ -878,6 +904,7 @@
                                 document.getElementById('coordsContainer').style.display = 'none';
                                 document.getElementById('perfContainer').style.display = 'none';
                                 document.getElementById('craftBtnContainer').style.display = 'none';
+                                document.getElementById('homeBtnContainer').style.display = 'none';
                                 document.getElementById('craftingUI').style.display = 'none';
                                 document.getElementById('chatInputContainer').style.display = 'none';
                             }
@@ -1370,6 +1397,7 @@
             coordsContainer.style.display = 'flex';
             document.getElementById('perfContainer').style.display = 'flex';
             document.getElementById('craftBtnContainer').style.display = 'flex';
+            document.getElementById('homeBtnContainer').style.display = 'flex';
             
             updateLeaderboardUI();
             gameState = 'PLAYING';
@@ -1538,6 +1566,7 @@
         }
 
         function attemptAttack() {
+            if (player.isWater) return;
             if (player.swingTimer <= 0 && player.cooldownTimer <= 0 && player.energy >= 5) {
                 player.swingTimer = 0.001; 
                 player.cooldownTimer = player.swingCooldown;
@@ -2022,6 +2051,7 @@
                 tileY = Math.max(0, Math.min(MAP_ROWS - 1, tileY));
                 let currentTile = mapData[tileY * MAP_COLS + tileX]; 
                 let isWater = currentTile === 1;
+                player.isWater = isWater;
 
                 if (isWater) { 
                     player.speed = player.sprintActive ? 96 : 64;
@@ -2216,6 +2246,7 @@
                     ptY = Math.max(0, Math.min(MAP_ROWS - 1, ptY));
                     let ptTile = mapData[ptY * MAP_COLS + ptX]; 
                     let ptIsWater = ptTile === 1;
+                    p.isWater = ptIsWater;
 
                     if (pIsMoving) {
                         if (p.footstepTimer <= 0) {
@@ -2566,10 +2597,20 @@
                     pLeftPunch += 6 * bAmt;
                     pLeftInward += 19 * bAmt;
                     pLeftHandTilt += 0.8 * bAmt;
-
+                    
                     const baseHandX = 24; 
                     const baseHandY = 24; 
                     let pIdleOffset = p.swingTimer <= 0 && bAmt === 0 ? Math.sin(performance.now() / 400) * 1.5 : 0;
+                    
+                    if (p.isWater) {
+                        pRightInward += 15;
+                        pLeftInward -= 15;
+                        if (Math.abs(p.targetX - p.x) > 1 || Math.abs(p.targetY - p.y) > 1) {
+                            let swimCycle = Math.sin(performance.now() / 200) * 10;
+                            pRightPunch += swimCycle;
+                            pLeftPunch -= swimCycle;
+                        }
+                    }
 
                     ctx.save();
                     ctx.rotate(p.angle);
@@ -2664,6 +2705,16 @@
                 const baseHandX = 24; 
                 const baseHandY = 24; 
                 let idleOffset = player.swingTimer <= 0 && bAmt === 0 ? Math.sin(performance.now() / 400) * 1.5 : 0;
+                
+                if (player.isWater) {
+                    rightInward += 15;
+                    leftInward -= 15;
+                    if (keys.w || keys.a || keys.s || keys.d) {
+                        let swimCycle = Math.sin(performance.now() / 200) * 10;
+                        rightPunch += swimCycle;
+                        leftPunch -= swimCycle;
+                    }
+                }
 
                 ctx.save();
                 ctx.rotate(player.angle);
@@ -2760,6 +2811,30 @@
             if (gameState === 'PLAYING') {
                 let ui = document.getElementById('craftingUI');
                 ui.style.display = (ui.style.display === 'none' || ui.style.display === '') ? 'flex' : 'none';
+            }
+        });
+
+        const homeBtnContainer = document.getElementById('homeBtnContainer');
+        homeBtnContainer.addEventListener('click', () => {
+            if (gameState === 'PLAYING' && !player.dead) {
+                player.health = 0;
+                player.dead = true;
+                player.deathTimer = 0.15;
+                player.killedBy = 'self';
+                player.forceSync = true;
+                
+                gameState = 'DEAD';
+                document.getElementById('mainMenu').style.display = 'flex';
+                document.getElementById('inventory').style.display = 'none';
+                document.getElementById('leaderboardContainer').style.display = 'none';
+                document.getElementById('minimapContainer').style.display = 'none';
+                document.getElementById('statsContainer').style.display = 'none';
+                document.getElementById('coordsContainer').style.display = 'none';
+                document.getElementById('perfContainer').style.display = 'none';
+                document.getElementById('craftBtnContainer').style.display = 'none';
+                document.getElementById('homeBtnContainer').style.display = 'none';
+                document.getElementById('craftingUI').style.display = 'none';
+                document.getElementById('chatInputContainer').style.display = 'none';
             }
         });
     </script>
