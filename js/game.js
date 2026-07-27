@@ -1499,14 +1499,14 @@
                 player.y = Math.max(0, Math.min(player.y, maxY));
 
                 minCtx.clearRect(0, 0, 160, 160);
-                let pTileX = Math.floor((player.x + (player.width / 2)) / TILE_SIZE);
-                let pTileY = Math.floor((player.y + (player.height / 2)) / TILE_SIZE);
+                let miniTileX = Math.floor((player.x + (player.width / 2)) / TILE_SIZE);
+                let miniTileY = Math.floor((player.y + (player.height / 2)) / TILE_SIZE);
                 
                 let viewRadius = 8;
                 for (let y = -viewRadius; y <= viewRadius; y++) {
                     for (let x = -viewRadius; x <= viewRadius; x++) {
-                        let tx = pTileX + x;
-                        let ty = pTileY + y;
+                        let tx = miniTileX + x;
+                        let ty = miniTileY + y;
                         if (tx >= 0 && tx < MAP_COLS && ty >= 0 && ty < MAP_ROWS) {
                             let tileVal = mapData[ty * MAP_COLS + tx];
                             let srcX = (tileVal % 10) * TILE_SIZE;
