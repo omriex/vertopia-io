@@ -13,7 +13,7 @@
     
     <title>Vertopia.io</title>
     <link rel="icon" type="image/png" href="Vertopia.png">
-    <script src="https://www.google.com/recaptcha/api.js" async defer></script>
+    <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
     <style>
         * {
             margin: 0;
@@ -558,7 +558,7 @@
             <h1>VERTOPIA.IO</h1>
             <div class="version-text">v1.0.9</div>
             <input type="text" id="playerNameInput" placeholder="Your name" maxlength="15" autocomplete="off">
-            <div class="g-recaptcha" data-sitekey="6LeZxWctAAAAAJPTabpF4_0PfKiTl6X85W62mh0c" data-callback="onCaptchaSolved" data-theme="dark" style="margin-bottom: 25px;"></div>
+            <div class="cf-turnstile" data-sitekey="0x4AAAAAAD_AIacd7oAQE9Ue" data-callback="onTurnstileSuccess" style="margin-bottom: 25px;"></div>
             <button id="playBtn" disabled>LOADING...</button>
         </div>
         
@@ -768,39 +768,6 @@
         
         onDisconnect(myPlayerRef).remove();
 
-        function spawnBloodParticles(cx, cy) {
-            let numBloods = 2 + Math.floor(Math.random() * 3);
-            for (let i = 0; i < numBloods; i++) {
-                let baseSz = 25 + Math.random() * 20;
-                particles.push({
-                    type: 'blood_splash',
-                    x: cx + (Math.random() - 0.5) * 40,
-                    y: cy + (Math.random() - 0.5) * 40,
-                    baseSize: baseSz,
-                    size: baseSz,
-                    alpha: 1.0,
-                    life: 0.6 + Math.random() * 0.3,
-                    maxLife: 0.9,
-                    vx: (Math.random() - 0.5) * 30,
-                    vy: -40 - Math.random() * 40
-                });
-            }
-        }
-
-        function spawnBloodDrops(cx, cy) {
-            for (let i = 0; i < 4; i++) {
-                particles.push({
-                    type: 'blood_drop',
-                    x: cx + (Math.random() - 0.5) * 30,
-                    y: cy + (Math.random() - 0.5) * 30,
-                    size: 9 + Math.random() * 9,
-                    alpha: 1.0,
-                    life: 0.15 + Math.random() * 0.1,
-                    maxLife: 0.25
-                });
-            }
-        }
-
         const playersRef = ref(db, 'players');
         onValue(playersRef, (snapshot) => {
             const data = snapshot.val();
@@ -828,7 +795,6 @@
                                 player.kbVy = Math.sin(hitAngle) * 120;
                             }
                             
-                            spawnBloodParticles(player.x + player.width / 2, player.y + player.height / 2);
                             playSoundInstance(assets.damageSounds, player.x + player.width / 2, player.y + player.height / 2);
                             
                             if (player.health <= 0 && !player.dead) {
@@ -884,8 +850,7 @@
                             lastHitT: 0,
                             health: data[id].health !== undefined ? data[id].health : 100,
                             dead: (data[id].health !== undefined ? data[id].health : 100) <= 0,
-                            deathTimer: 0,
-                            bloodSplashTimer: 0
+                            deathTimer: 0
                         };
                     } else {
                         otherPlayers[id].targetX = data[id].x;
@@ -927,8 +892,6 @@
 
                         if (data[id].hitEvent && data[id].hitEvent.t !== otherPlayers[id].lastHitT) {
                             otherPlayers[id].lastHitT = data[id].hitEvent.t;
-                            otherPlayers[id].bloodSplashTimer = 0.4;
-                            spawnBloodDrops(otherPlayers[id].x + player.width / 2, otherPlayers[id].y + player.height / 2);
                             playSoundInstance(assets.damageSounds, otherPlayers[id].x + player.width / 2, otherPlayers[id].y + player.height / 2);
                         }
                     }
@@ -1202,8 +1165,7 @@
             killedBy: null,
             kbVx: 0,
             kbVy: 0,
-            lastDamageTime: Date.now(),
-            bloodSplashTimer: 0
+            lastDamageTime: Date.now()
         };
 
         let activeSlot = 0; 
@@ -1323,7 +1285,6 @@
             player.energy = 100;
             player.damageNegationTimer = 0;
             player.lastDamageTime = Date.now();
-            player.bloodSplashTimer = 0;
 
             set(myPlayerRef, {
                 x: Math.round(player.x),
@@ -1672,7 +1633,6 @@
             leftHand: new Image(),
             rightHand: new Image(),
             sprintParticle: new Image(),
-            bloodParticle: new Image(),
             tree: new Image(),
             swingSound: new Audio('audio/weapon-swing.mp3'),
             grassSteps: [
@@ -1702,28 +1662,25 @@
             ]
         };
 
-        let assetsLoaded = false;
-        let isCaptchaSolved = false;
-
-        window.onCaptchaSolved = function() {
-            isCaptchaSolved = true;
-            if (assetsLoaded) {
-                playBtn.innerText = 'PLAY';
-                playBtn.disabled = false;
-            }
+        let turnstileSolved = false;
+        let gameLoopStarted = false;
+        
+        window.onTurnstileSuccess = function() {
+            turnstileSolved = true;
+            checkCanPlay();
         };
 
         let loadedCount = 0;
         function onAssetLoad() {
             loadedCount++;
-            if (loadedCount === 7) { 
-                assetsLoaded = true;
-                if (isCaptchaSolved) {
-                    playBtn.innerText = 'PLAY';
-                    playBtn.disabled = false;
-                } else {
-                    playBtn.innerText = 'LOADING...';
-                }
+            checkCanPlay();
+        }
+        
+        function checkCanPlay() {
+            if (loadedCount === 6 && turnstileSolved && !gameLoopStarted) {
+                gameLoopStarted = true;
+                playBtn.innerText = 'PLAY';
+                playBtn.disabled = false;
                 
                 lastLogicTime = performance.now();
                 setInterval(logicLoop, 1000 / 60);
@@ -1736,7 +1693,6 @@
         assets.leftHand.onload = onAssetLoad;
         assets.rightHand.onload = onAssetLoad;
         assets.sprintParticle.onload = onAssetLoad;
-        assets.bloodParticle.onload = onAssetLoad;
         assets.tree.onload = onAssetLoad;
 
         assets.tilesheet.src = 'assets/vertopia-tilesheet.png'; 
@@ -1744,7 +1700,6 @@
         assets.leftHand.src = 'assets/player-lefthand.png';
         assets.rightHand.src = 'assets/player-righthand.png';
         assets.sprintParticle.src = 'assets/sprint-particle.png';
-        assets.bloodParticle.src = 'assets/blood-particle.png';
         assets.tree.src = 'assets/tree.png';
 
         playBtn.addEventListener('click', () => {
@@ -1798,7 +1753,6 @@
                 
                 if (player.damageNegationTimer > 0) player.damageNegationTimer -= dt;
                 if (player.dead && player.deathTimer > 0) player.deathTimer -= dt;
-                if (player.bloodSplashTimer > 0) player.bloodSplashTimer -= dt;
                 
                 if (!player.dead) {
                     if (isRightMouseDown && player.swingTimer <= 0) {
@@ -1928,14 +1882,7 @@
                         particles.splice(i, 1);
                     } else {
                         let ratio = p.life / p.maxLife;
-                        if (p.type === 'blood_splash') {
-                            p.x += p.vx * dt;
-                            p.y += p.vy * dt;
-                            p.size = p.baseSize * ratio; 
-                            p.alpha = ratio;
-                        } else if (p.type === 'blood_drop') {
-                            p.alpha = ratio;
-                        } else if (p.isWater) {
+                        if (p.isWater) {
                             p.alpha = ratio * 1.0; 
                             p.size = 24 + (1 - ratio) * 60;
                         } else {
@@ -2145,7 +2092,6 @@
                     if (p.dead && p.deathTimer > 0) {
                         p.deathTimer -= dt;
                     }
-                    if (p.bloodSplashTimer > 0) p.bloodSplashTimer -= dt;
 
                     let lerpSpeed = 15 * dt;
                     if (p.x === undefined) p.x = p.targetX;
@@ -2464,15 +2410,7 @@
 
             if (gameState === 'PLAYING' || gameState === 'DEAD') {
                 particles.forEach(p => {
-                    if (p.type === 'blood_splash') {
-                        // Background blood splashes
-                    } else if (p.type === 'blood_drop') {
-                        ctx.save();
-                        ctx.translate(p.x, p.y);
-                        ctx.globalAlpha = p.alpha;
-                        ctx.drawImage(assets.bloodParticle, -p.size/2, -p.size/2, p.size, p.size);
-                        ctx.restore();
-                    } else if (p.isWater) {
+                    if (p.isWater) {
                         ctx.save();
                         ctx.translate(p.x, p.y);
                         ctx.globalAlpha = p.alpha;
@@ -2505,16 +2443,6 @@
                         ctx.globalAlpha = Math.max(0, 1.0 - progress);
                         let shrink = Math.max(0.01, 1.0 - progress);
                         ctx.scale(shrink, shrink);
-                    }
-
-                    if (p.bloodSplashTimer > 0) {
-                        let ratio = 1.0 - (p.bloodSplashTimer / 0.4); 
-                        let currentSize = player.width * 1.08 * (0.5 + ratio * 0.5); 
-                        ctx.save();
-                        ctx.rotate(p.angle);
-                        ctx.globalAlpha = p.bloodSplashTimer / 0.4;
-                        ctx.drawImage(assets.bloodParticle, -currentSize/2, -currentSize/2, currentSize, currentSize);
-                        ctx.restore();
                     }
 
                     let pHeadTilt = 0;
@@ -2611,16 +2539,6 @@
                     ctx.scale(shrink, shrink);
                 }
 
-                if (player.bloodSplashTimer > 0) {
-                    let ratio = 1.0 - (player.bloodSplashTimer / 0.4); 
-                    let currentSize = player.width * 1.08 * (0.5 + ratio * 0.5); 
-                    ctx.save();
-                    ctx.rotate(player.angle);
-                    ctx.globalAlpha = player.bloodSplashTimer / 0.4;
-                    ctx.drawImage(assets.bloodParticle, -currentSize/2, -currentSize/2, currentSize, currentSize);
-                    ctx.restore();
-                }
-
                 let headTilt = 0;
                 let rightPunch = 0;
                 let leftPunch = 0;
@@ -2707,16 +2625,6 @@
                         }
                     }
                 }
-
-                particles.forEach(p => {
-                    if (p.type === 'blood_splash') {
-                        ctx.save();
-                        ctx.translate(p.x, p.y);
-                        ctx.globalAlpha = p.alpha;
-                        ctx.drawImage(assets.bloodParticle, -p.size/2, -p.size/2, p.size, p.size);
-                        ctx.restore();
-                    }
-                });
             }
 
             ctx.restore();
