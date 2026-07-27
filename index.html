@@ -564,24 +564,25 @@
             right: 15px;
             display: flex;
             align-items: center;
-            gap: 8px;
-            padding: 10px 18px;
-            background-color: rgba(255, 255, 255, 0.1);
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            border-radius: 8px;
+            justify-content: center;
+            gap: 10px;
+            padding: 0 15px;
+            height: 44px;
+            background-color: rgba(0, 0, 0, 0.5);
+            border: none;
+            border-radius: 10px;
             color: white;
-            font-size: 0.9rem;
+            font-size: 15px;
             font-weight: bold;
             cursor: pointer;
             font-family: inherit;
-            transition: transform 0.15s ease-in-out, background-color 0.15s;
+            transition: transform 0.15s ease-in-out;
             backface-visibility: hidden;
             transform: translateZ(0);
         }
 
         #loginBtn:hover {
             transform: scale(0.95) translateZ(0);
-            background-color: rgba(255, 255, 255, 0.2);
         }
 
         #loginBtn svg {
