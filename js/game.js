@@ -113,6 +113,7 @@
                             targetAngle: data[id].angle,
                             sprint: data[id].sprint || false,
                             name: data[id].name,
+                            isOwner: data[id].isOwner || false,
                             attackCounter: data[id].attack || 0,
                             swingTimer: 0,
                             nextHand: 'right',
@@ -135,6 +136,7 @@
                         otherPlayers[id].targetAngle = data[id].angle;
                         otherPlayers[id].sprint = data[id].sprint || false;
                         otherPlayers[id].name = data[id].name;
+                        otherPlayers[id].isOwner = data[id].isOwner || false;
                         otherPlayers[id].blocking = data[id].blocking || false;
                         
                         if (data[id].health !== undefined) {
@@ -893,7 +895,8 @@
         });
 
         window.addEventListener('wheel', (e) => {
-            if (gameState !== 'PLAYING' && gameState !== 'PREVIEW' && gameState !== 'DEAD') return;
+            if (gameState !== 'PLAYING' && gameState !== 'PREVIEW') return;
+            if (player && player.dead) return;
             let scrollDirection = e.deltaY > 0 ? -1 : 1; 
             let baseSpeed = 0.25;
             if (scrollDirection === 1) { 
@@ -942,24 +945,25 @@
             ]
         };
 
-        let turnstileSolved = false;
         let gameLoopStarted = false;
         
-        window.onTurnstileSuccess = function() {
-            turnstileSolved = true;
-            let overlay = document.getElementById('turnstileOverlay');
-            if (overlay) overlay.style.display = 'none';
-            checkCanPlay();
+        window.checkCanPlay = function() {
+            if (loadedCount >= 6 && window.turnstileSolved && !gameLoopStarted) {
+                gameLoopStarted = true;
+                playBtn.innerText = 'PLAY';
+                playBtn.disabled = false;
+                
+                lastLogicTime = performance.now();
+                setInterval(logicLoop, 1000 / 60);
+                requestAnimationFrame(renderLoop);
+            }
         };
 
         let loadedCount = 0;
         function onAssetLoad() {
             loadedCount++;
-            checkCanPlay();
+            window.checkCanPlay();
         }
-        
-        function checkCanPlay() {
-            if (loadedCount >= 6 && turnstileSolved && !gameLoopStarted) {
                 gameLoopStarted = true;
                 playBtn.innerText = 'PLAY';
                 playBtn.disabled = false;
@@ -990,7 +994,28 @@
 
         playBtn.addEventListener('click', () => {
             let inputName = nameInput.value.trim();
-            player.name = inputName === "" ? "Vertopian" : inputName;
+            let baseName = inputName === "" ? "Vertopian" : inputName;
+            
+            let newName = baseName;
+            let counter = 1;
+            let nameExists = () => {
+                for (let id in otherPlayers) {
+                    if (otherPlayers[id].name === newName) return true;
+                }
+                return false;
+            };
+            while (nameExists()) {
+                newName = baseName + "-" + counter;
+                counter++;
+            }
+            player.name = newName;
+            
+            if (auth.currentUser && auth.currentUser.email === 'thekingofnetashoky@gmail.com') {
+                player.isOwner = true;
+            } else {
+                player.isOwner = false;
+            }
+            
             allPlayers = [];
             allPlayers.push({ name: player.name });
             
@@ -1488,10 +1513,15 @@
                 coordX.innerText = Math.floor(player.x / TILE_SIZE) - MAP_CENTER;
                 coordZ.innerText = Math.floor(player.y / TILE_SIZE) - MAP_CENTER;
 
-                const panRatioX = (mouse.x - (width / 2)) / (width / 2);
-                const panRatioY = (mouse.y - (height / 2)) / (height / 2);
-                const targetPanX = panRatioX * MAX_PAN;
-                const targetPanY = panRatioY * MAX_PAN;
+                let targetPanX = 0;
+                let targetPanY = 0;
+                
+                if (gameState === 'PLAYING' && !player.dead) {
+                    const panRatioX = (mouse.x - (width / 2)) / (width / 2);
+                    const panRatioY = (mouse.y - (height / 2)) / (height / 2);
+                    targetPanX = panRatioX * MAX_PAN;
+                    targetPanY = panRatioY * MAX_PAN;
+                }
 
                 let panLerp = Math.min(5 * dt, 1);
                 cameraPanOffset.x += (targetPanX - cameraPanOffset.x) * panLerp;
@@ -1512,6 +1542,7 @@
                             y: Math.round(player.y),
                             angle: Number(player.angle.toFixed(2)),
                             name: player.name,
+                            isOwner: player.isOwner || false,
                             sprint: player.sprintActive,
                             attack: player.attackCounter,
                             blocking: player.isBlocking,
@@ -1850,7 +1881,7 @@
                     if (!p.dead) {
                         ctx.font = 'bold 15px "Segoe UI", sans-serif';
                         ctx.textAlign = 'center';
-                        ctx.fillStyle = 'white';
+                        ctx.fillStyle = p.isOwner ? '#FFD700' : 'white';
                         ctx.fillText(p.name, p.x + (player.width / 2), p.y + player.height + 25);
                         
                         if (p.chatMessages) {
@@ -1967,7 +1998,7 @@
                     const textX = player.x + (player.width / 2);
                     const textY = player.y + player.height + 25;
                     
-                    ctx.fillStyle = 'white';
+                    ctx.fillStyle = player.isOwner ? '#FFD700' : 'white';
                     ctx.fillText(player.name, textX, textY);
                     
                     if (player.chatMessages) {
