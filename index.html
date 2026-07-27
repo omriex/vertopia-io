@@ -632,7 +632,7 @@
                 <span class="login-text">Login</span>
             </button>
             <h1>VERTOPIA.IO</h1>
-            <div class="version-text">v1.0.10</div>
+            <div class="version-text">v1.0.9</div>
             <input type="text" id="playerNameInput" placeholder="Your name" maxlength="15" autocomplete="off">
             <button id="playBtn" disabled>LOADING...</button>
         </div>
@@ -817,7 +817,7 @@
         import { getDatabase, ref, set, update as fbUpdate, onValue, onDisconnect } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
         import { getAuth, signInWithPopup, signOut, onAuthStateChanged, GoogleAuthProvider } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
 
-        const CURRENT_VERSION = "v1.0.10";
+        const CURRENT_VERSION = "v1.0.9";
 
         setInterval(async () => {
             try {
@@ -940,7 +940,8 @@
                             lastHitT: 0,
                             health: data[id].health !== undefined ? data[id].health : 100,
                             dead: (data[id].health !== undefined ? data[id].health : 100) <= 0,
-                            deathTimer: 0
+                            deathTimer: 0,
+                            swimTransition: 0
                         };
                     } else {
                         otherPlayers[id].targetX = data[id].x;
@@ -1248,6 +1249,7 @@
             forceSync: false,
             isBlocking: false,
             blockAmount: 0,
+            swimTransition: 0,
             damageNegationTimer: 0,
             lastHitT: 0,
             dead: false,
@@ -2052,6 +2054,11 @@
                 let currentTile = mapData[tileY * MAP_COLS + tileX]; 
                 let isWater = currentTile === 1;
                 player.isWater = isWater;
+                if (isWater) {
+                    player.swimTransition = Math.min(1.0, (player.swimTransition || 0) + dt * 4.0);
+                } else {
+                    player.swimTransition = Math.max(0.0, (player.swimTransition || 0) - dt * 4.0);
+                }
 
                 if (isWater) { 
                     player.speed = player.sprintActive ? 96 : 64;
@@ -2244,9 +2251,14 @@
                     let ptY = Math.floor((p.y + r) / TILE_SIZE);
                     ptX = Math.max(0, Math.min(MAP_COLS - 1, ptX));
                     ptY = Math.max(0, Math.min(MAP_ROWS - 1, ptY));
-                    let ptTile = mapData[ptY * MAP_COLS + ptX]; 
+                    let ptTile = mapData[ptY * MAP_COLS + ptX];
                     let ptIsWater = ptTile === 1;
                     p.isWater = ptIsWater;
+                    if (ptIsWater) {
+                        p.swimTransition = Math.min(1.0, (p.swimTransition || 0) + dt * 4.0);
+                    } else {
+                        p.swimTransition = Math.max(0.0, (p.swimTransition || 0) - dt * 4.0);
+                    }
 
                     if (pIsMoving) {
                         if (p.footstepTimer <= 0) {
@@ -2602,13 +2614,18 @@
                     const baseHandY = 24; 
                     let pIdleOffset = p.swingTimer <= 0 && bAmt === 0 ? Math.sin(performance.now() / 400) * 1.5 : 0;
                     
-                    if (p.isWater) {
-                        pRightInward += 15;
-                        pLeftInward -= 15;
+                    if (p.swimTransition > 0) {
+                        let trans = p.swimTransition;
+                        pRightInward += 10 * trans;
+                        pLeftInward -= 10 * trans;
                         if (Math.abs(p.targetX - p.x) > 1 || Math.abs(p.targetY - p.y) > 1) {
-                            let swimCycle = Math.sin(performance.now() / 200) * 10;
-                            pRightPunch += swimCycle;
-                            pLeftPunch -= swimCycle;
+                            let swimCycle = Math.sin(performance.now() / 400);
+                            pRightPunch += swimCycle * 8 * trans;
+                            pLeftPunch -= swimCycle * 8 * trans;
+                            pRightHandTilt += swimCycle * 0.4 * trans;
+                            pLeftHandTilt += swimCycle * 0.4 * trans;
+                            pRightInward += Math.cos(performance.now() / 400) * 3 * trans;
+                            pLeftInward -= Math.cos(performance.now() / 400) * 3 * trans;
                         }
                     }
 
@@ -2706,13 +2723,18 @@
                 const baseHandY = 24; 
                 let idleOffset = player.swingTimer <= 0 && bAmt === 0 ? Math.sin(performance.now() / 400) * 1.5 : 0;
                 
-                if (player.isWater) {
-                    rightInward += 15;
-                    leftInward -= 15;
+                if (player.swimTransition > 0) {
+                    let trans = player.swimTransition;
+                    rightInward += 10 * trans;
+                    leftInward -= 10 * trans;
                     if (keys.w || keys.a || keys.s || keys.d) {
-                        let swimCycle = Math.sin(performance.now() / 200) * 10;
-                        rightPunch += swimCycle;
-                        leftPunch -= swimCycle;
+                        let swimCycle = Math.sin(performance.now() / 400);
+                        rightPunch += swimCycle * 8 * trans;
+                        leftPunch -= swimCycle * 8 * trans;
+                        rightHandTilt += swimCycle * 0.4 * trans;
+                        leftHandTilt += swimCycle * 0.4 * trans;
+                        rightInward += Math.cos(performance.now() / 400) * 3 * trans;
+                        leftInward -= Math.cos(performance.now() / 400) * 3 * trans;
                     }
                 }
 
