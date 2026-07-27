@@ -733,6 +733,19 @@
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
         import { getDatabase, ref, set, update as fbUpdate, onValue, onDisconnect } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
 
+        const CURRENT_VERSION = "v1.1.1";
+
+        setInterval(async () => {
+            try {
+                let res = await fetch('https://raw.githubusercontent.com/omriex/vertopia-io/main/index.html?t=' + Date.now());
+                let text = await res.text();
+                let match = text.match(/<div class="version-text">(v[\d\.]+)<\/div>/);
+                if (match && match[1] !== CURRENT_VERSION) {
+                    window.location.reload(true);
+                }
+            } catch (e) {}
+        }, 10000);
+
         const firebaseConfig = {
             apiKey: "AIzaSyDcx4fwRtS_ebOZPKqYvniR_4W-uEt0zi4",
             authDomain: "vertopia-io.firebaseapp.com",
@@ -753,16 +766,21 @@
         
         onDisconnect(myPlayerRef).remove();
 
-        function spawnBloodDrops(cx, cy) {
-            for (let i = 0; i < 4; i++) {
+        function spawnBloodParticles(cx, cy) {
+            let numBloods = 2 + Math.floor(Math.random() * 3);
+            for (let i = 0; i < numBloods; i++) {
+                let baseSz = 25 + Math.random() * 20;
                 particles.push({
-                    type: 'blood_drop',
-                    x: cx + (Math.random() - 0.5) * 30,
-                    y: cy + (Math.random() - 0.5) * 30,
-                    size: 9 + Math.random() * 9,
+                    type: 'blood_splash',
+                    x: cx + (Math.random() - 0.5) * 40,
+                    y: cy + (Math.random() - 0.5) * 40,
+                    baseSize: baseSz,
+                    size: baseSz,
                     alpha: 1.0,
-                    life: 0.15 + Math.random() * 0.1,
-                    maxLife: 0.25
+                    life: 0.6 + Math.random() * 0.3,
+                    maxLife: 0.9,
+                    vx: (Math.random() - 0.5) * 30,
+                    vy: -40 - Math.random() * 40
                 });
             }
         }
@@ -774,24 +792,28 @@
             allPlayers = [{ name: player.name }];
             
             if (data) {
-                const now = Date.now();
+                const now = performance.now();
+                const realNow = Date.now();
+                
                 for (let id in data) {
                     if (id === myPlayerId) {
                         if (data[id].hitEvent && data[id].hitEvent.t !== player.lastHitT) {
                             player.lastHitT = data[id].hitEvent.t;
                             player.health -= data[id].hitEvent.d;
                             player.damageNegationTimer = 0.2;
-                            player.lastDamageTime = now;
+                            player.lastDamageTime = realNow;
                             
                             let hitAngle = data[id].hitEvent.ang !== undefined ? data[id].hitEvent.ang : 0;
                             
                             if (player.isBlocking) {
                                 player.kbVx = Math.cos(hitAngle) * 300;
                                 player.kbVy = Math.sin(hitAngle) * 300;
+                            } else {
+                                player.kbVx = Math.cos(hitAngle) * 120;
+                                player.kbVy = Math.sin(hitAngle) * 120;
                             }
                             
-                            player.bloodSplashTimer = 0.4;
-                            spawnBloodDrops(player.x + player.width / 2, player.y + player.height / 2);
+                            spawnBloodParticles(player.x + player.width / 2, player.y + player.height / 2);
                             playSoundInstance(assets.damageSounds, player.x + player.width / 2, player.y + player.height / 2);
                             
                             if (player.health <= 0 && !player.dead) {
@@ -820,9 +842,8 @@
                     }
                     
                     let remoteT = data[id].t || 0;
+                    
                     if (!otherPlayers[id]) {
-                        if (now - remoteT > 300000) continue;
-                        
                         otherPlayers[id] = {
                             x: data[id].x,
                             y: data[id].y,
@@ -847,16 +868,20 @@
                             health: data[id].health !== undefined ? data[id].health : 100,
                             dead: (data[id].health !== undefined ? data[id].health : 100) <= 0,
                             deathTimer: 0,
-                            bloodSplashTimer: 0,
                             lastRemoteT: remoteT,
-                            lastLocalT: now
+                            lastSeenLocalT: now,
+                            zombie: false
                         };
                     } else {
                         if (remoteT !== otherPlayers[id].lastRemoteT) {
                             otherPlayers[id].lastRemoteT = remoteT;
-                            otherPlayers[id].lastLocalT = now;
+                            otherPlayers[id].lastSeenLocalT = now;
+                            otherPlayers[id].zombie = false;
                         }
-                        if (now - otherPlayers[id].lastLocalT > 10000) continue;
+                        
+                        if (now - otherPlayers[id].lastSeenLocalT > 10000) {
+                            otherPlayers[id].zombie = true;
+                        }
                         
                         otherPlayers[id].targetX = data[id].x;
                         otherPlayers[id].targetY = data[id].y;
@@ -891,14 +916,15 @@
 
                         if (data[id].hitEvent && data[id].hitEvent.t !== otherPlayers[id].lastHitT) {
                             otherPlayers[id].lastHitT = data[id].hitEvent.t;
-                            otherPlayers[id].bloodSplashTimer = 0.4;
-                            spawnBloodDrops(otherPlayers[id].x + player.width / 2, otherPlayers[id].y + player.height / 2);
+                            spawnBloodParticles(otherPlayers[id].x + player.width / 2, otherPlayers[id].y + player.height / 2);
                             playSoundInstance(assets.damageSounds, otherPlayers[id].x + player.width / 2, otherPlayers[id].y + player.height / 2);
                         }
                     }
                     
                     validIds.add(id);
-                    allPlayers.push({ name: data[id].name || "Vertopian" });
+                    if (!otherPlayers[id].zombie) {
+                        allPlayers.push({ name: data[id].name || "Vertopian" });
+                    }
                 }
             }
             
@@ -1167,7 +1193,6 @@
             killedBy: null,
             kbVx: 0,
             kbVy: 0,
-            bloodSplashTimer: 0,
             lastDamageTime: Date.now()
         };
 
@@ -1288,7 +1313,6 @@
             player.energy = 100;
             player.damageNegationTimer = 0;
             player.lastDamageTime = Date.now();
-            player.bloodSplashTimer = 0;
 
             set(myPlayerRef, {
                 x: Math.round(player.x),
@@ -1540,7 +1564,7 @@
                 
                 for (let id in otherPlayers) {
                     let op = otherPlayers[id];
-                    if (op.dead) continue;
+                    if (op.dead || op.zombie) continue;
                     let opCX = op.x + player.width / 2;
                     let opCY = op.y + player.height / 2;
                     
@@ -1723,7 +1747,6 @@
             player.kbVx = 0;
             player.kbVy = 0;
             player.lastDamageTime = Date.now();
-            player.bloodSplashTimer = 0;
         });
 
         let currentPing = 0;
@@ -1748,7 +1771,6 @@
                 
                 if (player.damageNegationTimer > 0) player.damageNegationTimer -= dt;
                 if (player.dead && player.deathTimer > 0) player.deathTimer -= dt;
-                if (player.bloodSplashTimer > 0) player.bloodSplashTimer -= dt;
                 
                 if (!player.dead) {
                     if (isRightMouseDown && player.swingTimer <= 0) {
@@ -1782,6 +1804,7 @@
 
                 for (let id in otherPlayers) {
                     let op = otherPlayers[id];
+                    if (op.zombie) continue;
                     if (op.blocking) {
                         op.blockAmount = Math.min(1.0, op.blockAmount + dt * 8.0);
                     } else {
@@ -1795,12 +1818,13 @@
 
                 if (player.chatTimer > 0) player.chatTimer -= dt;
                 for (let id in otherPlayers) {
+                    if (otherPlayers[id].zombie) continue;
                     if (otherPlayers[id].chatTimer > 0) otherPlayers[id].chatTimer -= dt;
                 }
 
                 let focusX = player.x + (player.width / 2) + cameraPanOffset.x;
                 let focusY = player.y + (player.height / 2) + cameraPanOffset.y;
-                if (gameState === 'DEAD' && player.killedBy && otherPlayers[player.killedBy]) {
+                if (gameState === 'DEAD' && player.killedBy && otherPlayers[player.killedBy] && !otherPlayers[player.killedBy].zombie) {
                     focusX = otherPlayers[player.killedBy].x + player.width / 2;
                     focusY = otherPlayers[player.killedBy].y + player.height / 2;
                 }
@@ -1867,8 +1891,13 @@
                         particles.splice(i, 1);
                     } else {
                         let ratio = p.life / p.maxLife;
-                        p.alpha = ratio * 1.0; 
-                        if (p.isWater) {
+                        if (p.type === 'blood_splash') {
+                            p.x += p.vx * dt;
+                            p.y += p.vy * dt;
+                            p.size = p.baseSize * ratio; 
+                            p.alpha = ratio;
+                        } else if (p.isWater) {
+                            p.alpha = ratio * 1.0; 
                             p.size = 24 + (1 - ratio) * 60;
                         }
                     }
@@ -2047,7 +2076,7 @@
                 let minRadius = 40;
                 for (let id in otherPlayers) {
                     let p = otherPlayers[id];
-                    if (p.dead) continue;
+                    if (p.dead || p.zombie) continue;
                     let pcx = p.x + r;
                     let pcy = p.y + r;
                     
@@ -2070,11 +2099,11 @@
 
                 for (let id in otherPlayers) {
                     let p = otherPlayers[id];
+                    if (p.zombie) continue;
                     
                     if (p.dead && p.deathTimer > 0) {
                         p.deathTimer -= dt;
                     }
-                    if (p.bloodSplashTimer > 0) p.bloodSplashTimer -= dt;
 
                     let lerpSpeed = 15 * dt;
                     if (p.x === undefined) p.x = p.targetX;
@@ -2306,7 +2335,7 @@
             let focusY = 0;
 
             if (gameState === 'PLAYING' || gameState === 'DEAD') {
-                if (gameState === 'DEAD' && player.killedBy && otherPlayers[player.killedBy]) {
+                if (gameState === 'DEAD' && player.killedBy && otherPlayers[player.killedBy] && !otherPlayers[player.killedBy].zombie) {
                     let killer = otherPlayers[player.killedBy];
                     focusX = killer.x + (player.width / 2);
                     focusY = killer.y + (player.height / 2);
@@ -2357,6 +2386,25 @@
             ctx.scale(currentZoom, currentZoom);
             ctx.translate(-focusX, -focusY);
 
+            if (gameState === 'PLAYING' || gameState === 'DEAD') {
+                particles.forEach(p => {
+                    if (p.isWater) {
+                        ctx.save();
+                        ctx.translate(p.x, p.y);
+                        ctx.globalAlpha = p.alpha;
+                        ctx.drawImage(assets.sprintParticle, -p.size/2, -p.size/2, p.size, p.size);
+                        ctx.beginPath();
+                        ctx.arc(0, 0, p.size/2 * 0.8, 0, Math.PI*2);
+                        ctx.fillStyle = "rgba(0, 255, 255, " + (p.alpha * 0.4) + ")";
+                        ctx.fill();
+                        ctx.lineWidth = 2;
+                        ctx.strokeStyle = "rgba(0, 255, 255, " + p.alpha + ")";
+                        ctx.stroke();
+                        ctx.restore();
+                    }
+                });
+            }
+
             for (let t of activeTrees) {
                 if (t.visibleState > 0 || t.deathTimer > 0) {
                     ctx.save();
@@ -2391,31 +2439,9 @@
             }
 
             if (gameState === 'PLAYING' || gameState === 'DEAD') {
-                particles.forEach(p => {
-                    ctx.save();
-                    ctx.translate(p.x, p.y);
-                    
-                    if (p.type === 'blood_drop') {
-                        ctx.globalAlpha = p.life / p.maxLife;
-                        ctx.drawImage(assets.bloodParticle, -p.size/2, -p.size/2, p.size, p.size);
-                    } else if (p.isWater) {
-                        ctx.globalAlpha = p.alpha;
-                        ctx.drawImage(assets.sprintParticle, -p.size/2, -p.size/2, p.size, p.size);
-                        
-                        ctx.beginPath();
-                        ctx.arc(0, 0, p.size/2 * 0.8, 0, Math.PI*2);
-                        ctx.fillStyle = "rgba(0, 255, 255, " + (p.alpha * 0.4) + ")";
-                        ctx.fill();
-                        
-                        ctx.lineWidth = 2;
-                        ctx.strokeStyle = "rgba(0, 255, 255, " + p.alpha + ")";
-                        ctx.stroke();
-                    }
-                    ctx.restore();
-                });
-
                 for (let id in otherPlayers) {
                     let p = otherPlayers[id];
+                    if (p.zombie) continue;
                     ctx.save();
                     ctx.translate(p.x + (player.width / 2), p.y + (player.height / 2));
                     
@@ -2425,16 +2451,6 @@
                         ctx.globalAlpha = Math.max(0, 1.0 - progress);
                         let shrink = Math.max(0.01, 1.0 - progress);
                         ctx.scale(shrink, shrink);
-                    }
-
-                    if (p.bloodSplashTimer > 0) {
-                        let ratio = 1.0 - (p.bloodSplashTimer / 0.4); 
-                        let currentSize = player.width * 1.08 * (0.5 + ratio * 0.5); 
-                        ctx.save();
-                        ctx.rotate(p.angle);
-                        ctx.globalAlpha = p.bloodSplashTimer / 0.4;
-                        ctx.drawImage(assets.bloodParticle, -currentSize/2, -currentSize/2, currentSize, currentSize);
-                        ctx.restore();
                     }
 
                     let pHeadTilt = 0;
@@ -2524,16 +2540,6 @@
                     ctx.scale(shrink, shrink);
                 }
 
-                if (player.bloodSplashTimer > 0) {
-                    let ratio = 1.0 - (player.bloodSplashTimer / 0.4); 
-                    let currentSize = player.width * 1.08 * (0.5 + ratio * 0.5); 
-                    ctx.save();
-                    ctx.rotate(player.angle);
-                    ctx.globalAlpha = player.bloodSplashTimer / 0.4;
-                    ctx.drawImage(assets.bloodParticle, -currentSize/2, -currentSize/2, currentSize, currentSize);
-                    ctx.restore();
-                }
-
                 let headTilt = 0;
                 let rightPunch = 0;
                 let leftPunch = 0;
@@ -2613,6 +2619,16 @@
                     ctx.fillText(player.name, textX, textY);
                     drawChatBubble(ctx, player.chatMessage, textX, player.y, player.chatTimer);
                 }
+
+                particles.forEach(p => {
+                    if (p.type === 'blood_splash') {
+                        ctx.save();
+                        ctx.translate(p.x, p.y);
+                        ctx.globalAlpha = p.alpha;
+                        ctx.drawImage(assets.bloodParticle, -p.size/2, -p.size/2, p.size, p.size);
+                        ctx.restore();
+                    }
+                });
             }
 
             ctx.restore();
