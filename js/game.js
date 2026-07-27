@@ -964,15 +964,7 @@
             loadedCount++;
             window.checkCanPlay();
         }
-                gameLoopStarted = true;
-                playBtn.innerText = 'PLAY';
-                playBtn.disabled = false;
-                
-                lastLogicTime = performance.now();
-                setInterval(logicLoop, 1000 / 60);
-                requestAnimationFrame(renderLoop);
-            }
-        }
+
 
         function setupAsset(img, src) {
             let counted = false;
