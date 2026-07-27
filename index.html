@@ -558,7 +558,7 @@
             <h1>VERTOPIA.IO</h1>
             <div class="version-text">v1.0.9</div>
             <input type="text" id="playerNameInput" placeholder="Your name" maxlength="15" autocomplete="off">
-            <div class="g-recaptcha" data-sitekey="6LeowGctAAAAAAZsCtUVwneP9k5mMLa_oLX_X7ml" data-callback="onCaptchaSolved" data-theme="dark" style="margin-bottom: 25px;"></div>
+            <div class="g-recaptcha" data-sitekey="6LeZxWctAAAAAJPTabpF4_0PfKiTl6X85W62mh0c" data-callback="onCaptchaSolved" data-theme="dark" style="margin-bottom: 25px;"></div>
             <button id="playBtn" disabled>LOADING...</button>
         </div>
         
@@ -1722,7 +1722,7 @@
                     playBtn.innerText = 'PLAY';
                     playBtn.disabled = false;
                 } else {
-                    playBtn.innerText = 'SOLVE CAPTCHA';
+                    playBtn.innerText = 'LOADING...';
                 }
                 
                 lastLogicTime = performance.now();
