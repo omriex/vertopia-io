@@ -555,7 +555,7 @@
     <div id="uiLayer">
         <div id="mainMenu">
             <h1>VERTOPIA.IO</h1>
-            <div class="version-text">v1.0.9</div>
+            <div class="version-text">v1.1.0</div>
             <input type="text" id="playerNameInput" placeholder="Your name" maxlength="15" autocomplete="off">
             <button id="playBtn" disabled>LOADING...</button>
         </div>
@@ -753,6 +753,20 @@
         
         onDisconnect(myPlayerRef).remove();
 
+        function spawnBloodDrops(cx, cy) {
+            for (let i = 0; i < 4; i++) {
+                particles.push({
+                    type: 'blood_drop',
+                    x: cx + (Math.random() - 0.5) * 30,
+                    y: cy + (Math.random() - 0.5) * 30,
+                    size: 9 + Math.random() * 9,
+                    alpha: 1.0,
+                    life: 0.15 + Math.random() * 0.1,
+                    maxLife: 0.25
+                });
+            }
+        }
+
         const playersRef = ref(db, 'players');
         onValue(playersRef, (snapshot) => {
             const data = snapshot.val();
@@ -760,12 +774,14 @@
             allPlayers = [{ name: player.name }];
             
             if (data) {
+                const now = Date.now();
                 for (let id in data) {
                     if (id === myPlayerId) {
                         if (data[id].hitEvent && data[id].hitEvent.t !== player.lastHitT) {
                             player.lastHitT = data[id].hitEvent.t;
                             player.health -= data[id].hitEvent.d;
                             player.damageNegationTimer = 0.2;
+                            player.lastDamageTime = now;
                             
                             let hitAngle = data[id].hitEvent.ang !== undefined ? data[id].hitEvent.ang : 0;
                             
@@ -774,13 +790,14 @@
                                 player.kbVy = Math.sin(hitAngle) * 300;
                             }
                             
-                            spawnBloodParticles(player.x + player.width / 2, player.y + player.height / 2, player.width, player.angle);
+                            player.bloodSplashTimer = 0.4;
+                            spawnBloodDrops(player.x + player.width / 2, player.y + player.height / 2);
                             playSoundInstance(assets.damageSounds, player.x + player.width / 2, player.y + player.height / 2);
                             
                             if (player.health <= 0 && !player.dead) {
                                 player.health = 0;
                                 player.dead = true;
-                                player.deathTimer = 0.25;
+                                player.deathTimer = 0.15;
                                 player.killedBy = data[id].hitEvent.a;
                                 player.forceSync = true;
                                 
@@ -802,10 +819,10 @@
                         continue;
                     }
                     
-                    validIds.add(id);
-                    allPlayers.push({ name: data[id].name || "Vertopian" });
-                    
+                    let remoteT = data[id].t || 0;
                     if (!otherPlayers[id]) {
+                        if (now - remoteT > 300000) continue;
+                        
                         otherPlayers[id] = {
                             x: data[id].x,
                             y: data[id].y,
@@ -829,9 +846,18 @@
                             lastHitT: 0,
                             health: data[id].health !== undefined ? data[id].health : 100,
                             dead: (data[id].health !== undefined ? data[id].health : 100) <= 0,
-                            deathTimer: 0
+                            deathTimer: 0,
+                            bloodSplashTimer: 0,
+                            lastRemoteT: remoteT,
+                            lastLocalT: now
                         };
                     } else {
+                        if (remoteT !== otherPlayers[id].lastRemoteT) {
+                            otherPlayers[id].lastRemoteT = remoteT;
+                            otherPlayers[id].lastLocalT = now;
+                        }
+                        if (now - otherPlayers[id].lastLocalT > 10000) continue;
+                        
                         otherPlayers[id].targetX = data[id].x;
                         otherPlayers[id].targetY = data[id].y;
                         otherPlayers[id].targetAngle = data[id].angle;
@@ -843,7 +869,7 @@
                             otherPlayers[id].health = data[id].health;
                             if (data[id].health <= 0 && !otherPlayers[id].dead) {
                                 otherPlayers[id].dead = true;
-                                otherPlayers[id].deathTimer = 0.25;
+                                otherPlayers[id].deathTimer = 0.15;
                             } else if (data[id].health > 0) {
                                 otherPlayers[id].dead = false;
                             }
@@ -865,10 +891,14 @@
 
                         if (data[id].hitEvent && data[id].hitEvent.t !== otherPlayers[id].lastHitT) {
                             otherPlayers[id].lastHitT = data[id].hitEvent.t;
-                            spawnBloodParticles(otherPlayers[id].x + player.width / 2, otherPlayers[id].y + player.height / 2, player.width, data[id].angle);
+                            otherPlayers[id].bloodSplashTimer = 0.4;
+                            spawnBloodDrops(otherPlayers[id].x + player.width / 2, otherPlayers[id].y + player.height / 2);
                             playSoundInstance(assets.damageSounds, otherPlayers[id].x + player.width / 2, otherPlayers[id].y + player.height / 2);
                         }
                     }
+                    
+                    validIds.add(id);
+                    allPlayers.push({ name: data[id].name || "Vertopian" });
                 }
             }
             
@@ -988,7 +1018,7 @@
         const activeTrees = new Set();
 
         function generateMap() {
-            let mapSeed = 12345;
+            let mapSeed = 54321;
             function seededRandom() {
                 mapSeed = (mapSeed * 9301 + 49297) % 233280;
                 return mapSeed / 233280;
@@ -1052,7 +1082,7 @@
 
             for (let y = 0; y < MAP_ROWS - 1; y += 7) {
                 for (let x = 0; x < MAP_COLS - 1; x += 7) {
-                    if (seededRandom() < 0.25) { 
+                    if (seededRandom() < 0.3125) { 
                         let ox = Math.floor(seededRandom() * 5);
                         let oy = Math.floor(seededRandom() * 5);
                         let tx = x + ox;
@@ -1136,7 +1166,9 @@
             deathTimer: 0,
             killedBy: null,
             kbVx: 0,
-            kbVy: 0
+            kbVy: 0,
+            bloodSplashTimer: 0,
+            lastDamageTime: Date.now()
         };
 
         let activeSlot = 0; 
@@ -1255,6 +1287,8 @@
             player.health = 100;
             player.energy = 100;
             player.damageNegationTimer = 0;
+            player.lastDamageTime = Date.now();
+            player.bloodSplashTimer = 0;
 
             set(myPlayerRef, {
                 x: Math.round(player.x),
@@ -1264,7 +1298,8 @@
                 sprint: false,
                 attack: 0,
                 blocking: false,
-                health: player.health
+                health: player.health,
+                t: Date.now()
             });
 
             spawnMenuUI.style.display = 'none';
@@ -1443,30 +1478,6 @@
             return sound;
         }
 
-        function spawnBloodParticles(cx, cy, pWidth, angle) {
-            particles.push({
-                type: 'blood_splash',
-                x: cx,
-                y: cy,
-                size: pWidth * 1.08,
-                alpha: 1.0,
-                life: 0.4,
-                maxLife: 0.4,
-                angle: angle
-            });
-            for (let i = 0; i < 4; i++) {
-                particles.push({
-                    type: 'blood_drop',
-                    x: cx + (Math.random() - 0.5) * 30,
-                    y: cy + (Math.random() - 0.5) * 30,
-                    size: 9 + Math.random() * 9,
-                    alpha: 1.0,
-                    life: 0.15 + Math.random() * 0.1,
-                    maxLife: 0.25
-                });
-            }
-        }
-
         function attemptAttack() {
             if (player.swingTimer <= 0 && player.cooldownTimer <= 0 && player.energy >= 5) {
                 player.swingTimer = 0.001; 
@@ -1483,7 +1494,7 @@
 
                 let pCX = player.x + player.width / 2;
                 let pCY = player.y + player.height / 2;
-                let hitRange = 75;
+                let hitRange = 94;
                 let hitArc = Math.PI / 1.5; 
                 
                 let closestTarget = null;
@@ -1711,6 +1722,8 @@
             player.damageNegationTimer = 0;
             player.kbVx = 0;
             player.kbVy = 0;
+            player.lastDamageTime = Date.now();
+            player.bloodSplashTimer = 0;
         });
 
         let currentPing = 0;
@@ -1735,6 +1748,7 @@
                 
                 if (player.damageNegationTimer > 0) player.damageNegationTimer -= dt;
                 if (player.dead && player.deathTimer > 0) player.deathTimer -= dt;
+                if (player.bloodSplashTimer > 0) player.bloodSplashTimer -= dt;
                 
                 if (!player.dead) {
                     if (isRightMouseDown && player.swingTimer <= 0) {
@@ -1751,9 +1765,10 @@
                 if (Math.abs(player.kbVx) > 1 || Math.abs(player.kbVy) > 1) {
                     player.x += player.kbVx * dt;
                     player.y += player.kbVy * dt;
-                    let friction = Math.min(15 * dt, 1);
-                    player.kbVx += (0 - player.kbVx) * friction;
-                    player.kbVy += (0 - player.kbVy) * friction;
+                    
+                    let friction = Math.pow(0.02, dt); 
+                    player.kbVx *= friction;
+                    player.kbVy *= friction;
                 } else {
                     player.kbVx = 0;
                     player.kbVy = 0;
@@ -1855,8 +1870,6 @@
                         p.alpha = ratio * 1.0; 
                         if (p.isWater) {
                             p.size = 24 + (1 - ratio) * 60;
-                        } else if (!p.type) {
-                            p.size = ratio * 48; 
                         }
                     }
                 }
@@ -1936,6 +1949,13 @@
                             isWater: isWater
                         });
                         player.particleTimer = isWater && !isMoving ? 0.6 : 0.2;
+                    }
+                }
+
+                if (!player.dead && player.health < 100) {
+                    if (Date.now() - player.lastDamageTime > 15000) {
+                        player.health += 5 * dt; 
+                        if (player.health > 100) player.health = 100;
                     }
                 }
 
@@ -2054,6 +2074,7 @@
                     if (p.dead && p.deathTimer > 0) {
                         p.deathTimer -= dt;
                     }
+                    if (p.bloodSplashTimer > 0) p.bloodSplashTimer -= dt;
 
                     let lerpSpeed = 15 * dt;
                     if (p.x === undefined) p.x = p.targetX;
@@ -2150,7 +2171,7 @@
 
                 let now = performance.now();
                 if (now - lastSyncTime > 50) { 
-                    if (isMoving || lastAngle !== player.angle || player.sprintActive !== false || player.forceSync || player.isBlocking || Math.abs(player.kbVx) > 1 || Math.abs(player.kbVy) > 1) {
+                    if (isMoving || lastAngle !== player.angle || player.sprintActive !== false || player.forceSync || player.isBlocking || Math.abs(player.kbVx) > 1 || Math.abs(player.kbVy) > 1 || now - lastSyncTime > 3000) {
                         let syncData = {
                             x: Math.round(player.x),
                             y: Math.round(player.y),
@@ -2159,7 +2180,8 @@
                             sprint: player.sprintActive,
                             attack: player.attackCounter,
                             blocking: player.isBlocking,
-                            health: player.health
+                            health: player.health,
+                            t: Date.now()
                         };
                         if (player.chatPayload) {
                             syncData.chat = player.chatPayload;
@@ -2373,13 +2395,7 @@
                     ctx.save();
                     ctx.translate(p.x, p.y);
                     
-                    if (p.type === 'blood_splash') {
-                        let ratio = 1.0 - (p.life / p.maxLife); 
-                        let currentSize = p.size * (0.5 + ratio * 0.5); 
-                        ctx.globalAlpha = p.life / p.maxLife;
-                        if (p.angle !== undefined) ctx.rotate(p.angle);
-                        ctx.drawImage(assets.bloodParticle, -currentSize/2, -currentSize/2, currentSize, currentSize);
-                    } else if (p.type === 'blood_drop') {
+                    if (p.type === 'blood_drop') {
                         ctx.globalAlpha = p.life / p.maxLife;
                         ctx.drawImage(assets.bloodParticle, -p.size/2, -p.size/2, p.size, p.size);
                     } else if (p.isWater) {
@@ -2394,9 +2410,6 @@
                         ctx.lineWidth = 2;
                         ctx.strokeStyle = "rgba(0, 255, 255, " + p.alpha + ")";
                         ctx.stroke();
-                    } else {
-                        ctx.globalAlpha = p.alpha;
-                        ctx.drawImage(assets.sprintParticle, -p.size / 2, -p.size / 2, p.size, p.size);
                     }
                     ctx.restore();
                 });
@@ -2407,11 +2420,21 @@
                     ctx.translate(p.x + (player.width / 2), p.y + (player.height / 2));
                     
                     if (p.dead) {
-                        let progress = 1.0 - (p.deathTimer / 0.25);
+                        let progress = 1.0 - (p.deathTimer / 0.15);
                         if (progress > 1.0) progress = 1.0;
                         ctx.globalAlpha = Math.max(0, 1.0 - progress);
                         let shrink = Math.max(0.01, 1.0 - progress);
                         ctx.scale(shrink, shrink);
+                    }
+
+                    if (p.bloodSplashTimer > 0) {
+                        let ratio = 1.0 - (p.bloodSplashTimer / 0.4); 
+                        let currentSize = player.width * 1.08 * (0.5 + ratio * 0.5); 
+                        ctx.save();
+                        ctx.rotate(p.angle);
+                        ctx.globalAlpha = p.bloodSplashTimer / 0.4;
+                        ctx.drawImage(assets.bloodParticle, -currentSize/2, -currentSize/2, currentSize, currentSize);
+                        ctx.restore();
                     }
 
                     let pHeadTilt = 0;
@@ -2494,11 +2517,21 @@
                 ctx.translate(player.x + (player.width / 2), player.y + (player.height / 2));
                 
                 if (player.dead) {
-                    let progress = 1.0 - (player.deathTimer / 0.25);
+                    let progress = 1.0 - (player.deathTimer / 0.15);
                     if (progress > 1.0) progress = 1.0;
                     ctx.globalAlpha = Math.max(0, 1.0 - progress);
                     let shrink = Math.max(0.01, 1.0 - progress);
                     ctx.scale(shrink, shrink);
+                }
+
+                if (player.bloodSplashTimer > 0) {
+                    let ratio = 1.0 - (player.bloodSplashTimer / 0.4); 
+                    let currentSize = player.width * 1.08 * (0.5 + ratio * 0.5); 
+                    ctx.save();
+                    ctx.rotate(player.angle);
+                    ctx.globalAlpha = player.bloodSplashTimer / 0.4;
+                    ctx.drawImage(assets.bloodParticle, -currentSize/2, -currentSize/2, currentSize, currentSize);
+                    ctx.restore();
                 }
 
                 let headTilt = 0;
