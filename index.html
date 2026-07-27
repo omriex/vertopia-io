@@ -818,6 +818,12 @@
         const auth = getAuth(app);
         const googleProvider = new GoogleAuthProvider();
         
+        let serverTimeOffset = 0;
+        onValue(ref(db, '.info/serverTimeOffset'), (snap) => {
+            serverTimeOffset = snap.val() || 0;
+        });
+        function getServerTime() { return Date.now() + serverTimeOffset; }
+        
         const myPlayerId = Math.random().toString(36).substring(2, 15);
         const myPlayerRef = ref(db, `players/${myPlayerId}`);
         
@@ -832,7 +838,7 @@
             allPlayers = [{ name: player.name }];
             
             if (data) {
-                const realNow = Date.now();
+                const realNow = getServerTime();
                 
                 for (let id in data) {
                     if (id === myPlayerId) {
@@ -1222,7 +1228,7 @@
             killedBy: null,
             kbVx: 0,
             kbVy: 0,
-            lastDamageTime: Date.now()
+            lastDamageTime: getServerTime()
         };
 
         let activeSlot = 0; 
@@ -1341,7 +1347,7 @@
             player.health = 100;
             player.energy = 100;
             player.damageNegationTimer = 0;
-            player.lastDamageTime = Date.now();
+            player.lastDamageTime = getServerTime();
 
             set(myPlayerRef, {
                 x: Math.round(player.x),
@@ -1352,7 +1358,7 @@
                 attack: 0,
                 blocking: false,
                 health: player.health,
-                t: Date.now()
+                t: getServerTime()
             });
 
             spawnMenuUI.style.display = 'none';
@@ -1449,7 +1455,7 @@
                     if (isChatting) {
                         let msg = document.getElementById('chatInput').value.trim();
                         if (msg !== "") {
-                            player.chatPayload = { msg: msg, t: Date.now() };
+                            player.chatPayload = { msg: msg, t: getServerTime() };
                             player.chatMessages.push({ msg: msg, timer: 4.0, maxTime: 4.0 });
                             if (player.chatMessages.length > 3) player.chatMessages.shift();
                             player.forceSync = true;
@@ -1643,7 +1649,7 @@
                     fbUpdate(ref(db), {
                         [`players/${closestTarget.id}/hitEvent`]: {
                             d: damage,
-                            t: Date.now(),
+                            t: getServerTime(),
                             a: myPlayerId,
                             ang: player.angle
                         }
@@ -1791,7 +1797,7 @@
             player.damageNegationTimer = 0;
             player.kbVx = 0;
             player.kbVy = 0;
-            player.lastDamageTime = Date.now();
+            player.lastDamageTime = getServerTime();
         });
 
         document.getElementById('loginBtn').addEventListener('click', () => {
@@ -2054,7 +2060,7 @@
                 }
 
                 if (!player.dead && player.health < 100) {
-                    if (Date.now() - player.lastDamageTime > 15000) {
+                    if (getServerTime() - player.lastDamageTime > 15000) {
                         player.health += 5 * dt; 
                         if (player.health > 100) player.health = 100;
                     }
@@ -2281,7 +2287,7 @@
                             attack: player.attackCounter,
                             blocking: player.isBlocking,
                             health: player.health,
-                            t: Date.now()
+                            t: getServerTime()
                         };
                         if (player.chatPayload) {
                             syncData.chat = player.chatPayload;
