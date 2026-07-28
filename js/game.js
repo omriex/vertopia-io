@@ -374,6 +374,8 @@
                                 mapData[(ty + 1) * MAP_COLS + tx + 1] === 0) {
                                 
                                 let maxHp = 5 + Math.floor(seededRandom() * 6);
+                                let baseScale = 0.8 + ((maxHp - 5) / 5) * 0.4;
+                                let rot = seededRandom() * Math.PI * 2;
                                 let treeId = tx + "_" + ty;
                                 trees.set(treeId, {
                                     id: treeId,
@@ -383,6 +385,8 @@
                                     cy: ty * TILE_SIZE + TILE_SIZE,
                                     hp: maxHp,
                                     maxHp: maxHp,
+                                    baseScale: baseScale,
+                                    rot: rot,
                                     hitAngle: 0,
                                     hitTimer: 0,
                                     deathTimer: 0,
@@ -1761,7 +1765,10 @@
                         alpha = t.visibleState;
                     }
                     
+                    scale *= (t.baseScale || 1.0);
+                    
                     ctx.scale(scale, scale);
+                    if (t.rot !== undefined) ctx.rotate(t.rot);
                     ctx.globalAlpha = alpha;
                     ctx.drawImage(assets.tree, -64, -64, 128, 128);
                     ctx.restore();
