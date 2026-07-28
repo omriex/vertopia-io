@@ -430,7 +430,9 @@
             sprintActive: false,
             swingTimer: 0,
             swingDuration: 0.216, 
-            swingCooldown: 0.35,  
+            swingCooldown: 0.35,
+            inventory: ['rock', null, null, null, null],
+            equippedSlot: 0  
             cooldownTimer: 0,
             nextHand: 'right',
             footstepTimer: 0,
@@ -455,6 +457,39 @@
 
         let activeSlot = 0; 
         let allPlayers = [];
+        
+        let droppedItems = [];
+        
+        function dropItem(itemType, fromX, fromY, angle) {
+            let speed = 200 + Math.random() * 100;
+            droppedItems.push({
+                type: itemType,
+                x: fromX,
+                y: fromY,
+                vx: Math.cos(angle) * speed,
+                vy: Math.sin(angle) * speed,
+                rot: Math.random() * Math.PI * 2,
+                spin: (Math.random() - 0.5) * 10,
+                timer: 0
+            });
+        }
+        
+        function pickupItem(type) {
+            let slots = document.querySelectorAll('#craftingInventory .inventory-slot');
+            for (let slot of slots) {
+                if (!slot.querySelector('.item-img')) {
+                    let img = document.createElement('img');
+                    img.src = `assets/${type}.png`;
+                    img.className = 'item-img';
+                    img.draggable = true;
+                    img.setAttribute('data-name', type.charAt(0).toUpperCase() + type.slice(1));
+                    img.setAttribute('data-desc', `A good ${type}.`);
+                    slot.appendChild(img);
+                    return true;
+                }
+            }
+            return false;
+        }
         const keys = { w: false, a: false, s: false, d: false, shift: false };
         const mouse = { x: width / 2, y: height / 2 };
         let isMouseDown = false; 
@@ -793,25 +828,20 @@
                         if (trees.has(id)) {
                             let t = trees.get(id);
                             if (t.hp > 0) {
-                                let testX = pCX;
-                                let testY = pCY;
-                                if (pCX < t.x) testX = t.x;
-                                else if (pCX > t.x + 128) testX = t.x + 128;
-                                if (pCY < t.y) testY = t.y;
-                                else if (pCY > t.y + 128) testY = t.y + 128;
+                                let tRadius = 48 * (t.baseScale || 1.0);
+                                let dx = t.cx - pCX;
+                                let dy = t.cy - pCY;
+                                let distToTree = Math.sqrt(dx*dx + dy*dy);
+                                let distToHitbox = distToTree - tRadius;
                                 
-                                let dx = testX - pCX;
-                                let dy = testY - pCY;
-                                let distToAABB = Math.sqrt(dx*dx + dy*dy);
-                                
-                                if (distToAABB <= hitRange) {
+                                if (distToHitbox <= hitRange) {
                                     let angleToTree = Math.atan2(t.cy - pCY, t.cx - pCX);
                                     let angleDiff = Math.abs(player.angle - angleToTree);
                                     while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
                                     angleDiff = Math.abs(angleDiff);
                                     
-                                    if (angleDiff <= hitArc / 2 && distToAABB < closestDist) {
-                                        closestDist = distToAABB;
+                                    if (angleDiff <= hitArc / 2 && distToHitbox < closestDist) {
+                                        closestDist = distToHitbox;
                                         closestTarget = t;
                                         targetType = 'tree';
                                     }
@@ -890,7 +920,24 @@
         window.addEventListener('mousedown', (e) => {
             if (gameState === 'PLAYING' && e.target === canvas) {
                 if (e.button === 0) isMouseDown = true;
-                if (e.button === 2) isRightMouseDown = true;
+                if (e.button === 2) {
+                    let pickedUp = false;
+                    for (let i = droppedItems.length - 1; i >= 0; i--) {
+                        let item = droppedItems[i];
+                        let screenItemX = (width / 2) + (item.x - (player.x + player.width/2)) * currentZoom;
+                        let screenItemY = (height / 2) + (item.y - (player.y + player.height/2)) * currentZoom;
+                        let dx = mouse.x - screenItemX;
+                        let dy = mouse.y - screenItemY;
+                        if (Math.sqrt(dx*dx + dy*dy) < 40 * currentZoom) {
+                            if (pickupItem(item.type)) {
+                                droppedItems.splice(i, 1);
+                                pickedUp = true;
+                                break;
+                            }
+                        }
+                    }
+                    if (!pickedUp) isRightMouseDown = true;
+                }
             }
         });
 
@@ -922,6 +969,8 @@
             rightHand: new Image(),
             sprintParticle: new Image(),
             tree: new Image(),
+            rock: new Image(),
+            itemBackground: new Image(),
             swingSound: new Audio('audio/weapon-swing.mp3'),
             grassSteps: [
                 new Audio('audio/grass-footstep-1.mp3'),
@@ -953,7 +1002,7 @@
         let gameLoopStarted = false;
         
         window.checkCanPlay = function() {
-            if (loadedCount >= 6 && window.turnstileSolved && !gameLoopStarted) {
+            if (loadedCount >= 8 && window.turnstileSolved && !gameLoopStarted) {
                 gameLoopStarted = true;
                 playBtn.innerText = 'PLAY';
                 playBtn.disabled = false;
@@ -988,6 +1037,8 @@
         setupAsset(assets.rightHand, 'assets/player-righthand.png');
         setupAsset(assets.sprintParticle, 'assets/sprint-particle.png');
         setupAsset(assets.tree, 'assets/tree.png');
+        setupAsset(assets.rock, 'assets/rock.png');
+        setupAsset(assets.itemBackground, 'assets/item-background.png');
 
         playBtn.addEventListener('click', () => {
             let inputName = nameInput.value.trim();
@@ -1039,6 +1090,77 @@
             player.lastDamageTime = getServerTime();
         });
 
+        const tooltip = document.getElementById('itemTooltip');
+        const tooltipName = document.getElementById('tooltipName');
+        const tooltipDesc = document.getElementById('tooltipDesc');
+        let draggedItem = null;
+
+        document.querySelectorAll('.inventory-slot').forEach(slot => {
+            slot.addEventListener('dragover', (e) => { e.preventDefault(); });
+            slot.addEventListener('drop', (e) => {
+                e.preventDefault();
+                if (draggedItem) {
+                    let existingItem = slot.querySelector('.item-img');
+                    if (existingItem && existingItem !== draggedItem) {
+                        let parent = draggedItem.parentNode;
+                        slot.appendChild(draggedItem);
+                        parent.appendChild(existingItem);
+                    } else {
+                        slot.appendChild(draggedItem);
+                    }
+                }
+            });
+        });
+
+        document.body.addEventListener('dragover', (e) => {
+            if (e.target.id === 'gameCanvas' || e.target.id === 'uiLayer') e.preventDefault();
+        });
+        document.body.addEventListener('drop', (e) => {
+            if ((e.target.id === 'gameCanvas' || e.target.id === 'uiLayer') && draggedItem) {
+                let itemName = draggedItem.getAttribute('data-name').toLowerCase();
+                dropItem(itemName, player.x + player.width/2, player.y + player.height/2, player.angle);
+                draggedItem.remove();
+                draggedItem = null;
+                tooltip.style.display = 'none';
+            }
+        });
+
+        document.addEventListener('dragstart', (e) => {
+            if (e.target.classList && e.target.classList.contains('item-img')) {
+                draggedItem = e.target;
+                tooltip.style.display = 'none';
+            }
+        });
+        document.addEventListener('dragend', () => { draggedItem = null; });
+
+        document.addEventListener('mouseover', (e) => {
+            if (e.target.classList && e.target.classList.contains('item-img')) {
+                tooltipName.innerText = e.target.getAttribute('data-name');
+                tooltipDesc.innerText = e.target.getAttribute('data-desc');
+                tooltip.style.display = 'block';
+            }
+        });
+        document.addEventListener('mouseout', (e) => {
+            if (e.target.classList && e.target.classList.contains('item-img')) {
+                tooltip.style.display = 'none';
+            }
+        });
+        document.addEventListener('mousemove', (e) => {
+            if (tooltip.style.display === 'block') {
+                tooltip.style.left = (e.pageX + 15) + 'px';
+                tooltip.style.top = (e.pageY + 15) + 'px';
+            }
+        });
+        document.addEventListener('contextmenu', (e) => {
+            if (e.target.classList && e.target.classList.contains('item-img')) {
+                e.preventDefault();
+                let itemName = e.target.getAttribute('data-name').toLowerCase();
+                dropItem(itemName, player.x + player.width/2, player.y + player.height/2, player.angle);
+                e.target.remove();
+                tooltip.style.display = 'none';
+            }
+        });
+        
         document.getElementById('loginBtn').addEventListener('click', () => {
             if (auth.currentUser) {
                 signOut(auth);
@@ -1369,19 +1491,13 @@
                         if (trees.has(id)) {
                             let t = trees.get(id);
                             if (t.hp > 0) {
-                                let testX = cx;
-                                let testY = cy;
-                                if (cx < t.x) testX = t.x;
-                                else if (cx > t.x + 128) testX = t.x + 128;
-                                if (cy < t.y) testY = t.y;
-                                else if (cy > t.y + 128) testY = t.y + 128;
-                                
-                                let distX = cx - testX;
-                                let distY = cy - testY;
+                                let tRadius = 48 * (t.baseScale || 1.0);
+                                let distX = cx - t.cx;
+                                let distY = cy - t.cy;
                                 let distance = Math.sqrt(distX*distX + distY*distY);
                                 
-                                if (distance < r) {
-                                    let overlap = r - distance;
+                                if (distance < r + tRadius) {
+                                    let overlap = (r + tRadius) - distance;
                                     if (distance === 0) {
                                         player.y -= overlap;
                                     } else {
@@ -1466,6 +1582,38 @@
                         p.swimTransition = Math.min(1.0, (p.swimTransition || 0) + dt * 4.0);
                     } else {
                         p.swimTransition = Math.max(0.0, (p.swimTransition || 0) - dt * 4.0);
+                    }
+
+                    for (let i = droppedItems.length - 1; i >= 0; i--) {
+                        let item = droppedItems[i];
+                        item.x += item.vx * dt;
+                        item.y += item.vy * dt;
+                        item.rot += item.spin * dt;
+                        item.vx *= Math.pow(0.1, dt);
+                        item.vy *= Math.pow(0.1, dt);
+                        item.spin *= Math.pow(0.1, dt);
+                        item.timer += dt;
+                        
+                        let dx = item.x - (player.x + player.width/2);
+                        let dy = item.y - (player.y + player.height/2);
+                        let dist = Math.sqrt(dx*dx + dy*dy);
+                        if (item.timer > 0.5 && dist < 40) {
+                            if (pickupItem(item.type)) {
+                                droppedItems.splice(i, 1);
+                                continue;
+                            }
+                        }
+                    }
+                    
+                    let hotbarSlots = document.querySelectorAll('#craftingInventory .inventory-slot');
+                    if (hotbarSlots.length > player.equippedSlot) {
+                        let activeSlotEl = hotbarSlots[player.equippedSlot];
+                        let itemImg = activeSlotEl.querySelector('.item-img');
+                        if (itemImg) {
+                            player.inventory[player.equippedSlot] = itemImg.getAttribute('data-name').toLowerCase();
+                        } else {
+                            player.inventory[player.equippedSlot] = null;
+                        }
                     }
 
                     if (pIsMoving) {
@@ -1739,41 +1887,6 @@
             ctx.scale(currentZoom, currentZoom);
             ctx.translate(-focusX, -focusY);
 
-            for (let t of activeTrees) {
-                if (t.visibleState > 0 || t.deathTimer > 0) {
-                    ctx.save();
-                    let drawX = t.cx;
-                    let drawY = t.cy;
-                    
-                    if (t.hitTimer > 0) {
-                        let bounceDist = Math.sin((t.hitTimer / 0.2) * Math.PI) * 12;
-                        drawX += Math.cos(t.hitAngle) * bounceDist;
-                        drawY += Math.sin(t.hitAngle) * bounceDist;
-                    }
-                    
-                    ctx.translate(drawX, drawY);
-                    
-                    let scale = 1.0;
-                    let alpha = 1.0;
-                    
-                    if (t.dead) {
-                        let progress = 1.0 - (t.deathTimer / 0.5);
-                        scale = t.visibleState + progress * 0.5;
-                        alpha = (1.0 - progress) * t.visibleState;
-                    } else {
-                        scale = t.visibleState;
-                        alpha = t.visibleState;
-                    }
-                    
-                    scale *= (t.baseScale || 1.0);
-                    
-                    ctx.scale(scale, scale);
-                    if (t.rot !== undefined) ctx.rotate(t.rot);
-                    ctx.globalAlpha = alpha;
-                    ctx.drawImage(assets.tree, -64, -64, 128, 128);
-                    ctx.restore();
-                }
-            }
 
             if (gameState === 'PLAYING' || gameState === 'DEAD') {
                 particles.forEach(p => {
@@ -1996,6 +2109,14 @@
                     assets.rightHand,
                     -player.handSize / 2, -player.handSize / 2, player.handSize, player.handSize
                 );
+                
+                if (player.inventory && player.inventory[player.equippedSlot] === 'rock') {
+                    let rockSize = player.handSize * 1.1;
+                    ctx.drawImage(
+                        assets.rock,
+                        -rockSize / 2, -rockSize / 2, rockSize, rockSize
+                    );
+                }
                 ctx.restore();
 
                 ctx.save();
@@ -2026,6 +2147,53 @@
                             drawChatBubble(ctx, msgObj.msg, textX, player.y, msgObj.timer, msgObj.maxTime, stackIndex);
                         }
                     }
+                }
+            }
+
+            droppedItems.forEach(item => {
+                if (assets[item.type]) {
+                    ctx.save();
+                    ctx.translate(item.x, item.y);
+                    ctx.drawImage(assets.itemBackground, -20, -20, 40, 40);
+                    ctx.rotate(item.rot);
+                    ctx.drawImage(assets[item.type], -16, -16, 32, 32);
+                    ctx.restore();
+                }
+            });
+
+            for (let t of activeTrees) {
+                if (t.visibleState > 0 || t.deathTimer > 0) {
+                    ctx.save();
+                    let drawX = t.cx;
+                    let drawY = t.cy;
+                    
+                    if (t.hitTimer > 0) {
+                        let bounceDist = Math.sin((t.hitTimer / 0.2) * Math.PI) * 12;
+                        drawX += Math.cos(t.hitAngle) * bounceDist;
+                        drawY += Math.sin(t.hitAngle) * bounceDist;
+                    }
+                    
+                    ctx.translate(drawX, drawY);
+                    
+                    let scale = 1.0;
+                    let alpha = 1.0;
+                    
+                    if (t.dead) {
+                        let progress = 1.0 - (t.deathTimer / 0.5);
+                        scale = t.visibleState + progress * 0.5;
+                        alpha = (1.0 - progress) * t.visibleState;
+                    } else {
+                        scale = t.visibleState;
+                        alpha = t.visibleState;
+                    }
+                    
+                    scale *= (t.baseScale || 1.0);
+                    
+                    ctx.scale(scale, scale);
+                    if (t.rot !== undefined) ctx.rotate(t.rot);
+                    ctx.globalAlpha = alpha;
+                    ctx.drawImage(assets.tree, -64, -64, 128, 128);
+                    ctx.restore();
                 }
             }
 
