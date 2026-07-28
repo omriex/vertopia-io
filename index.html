@@ -119,7 +119,7 @@
         <div id="craftingUI" class="spawn-menu-wrapper">
             <div style="display: flex; flex-direction: row; align-items: center; justify-content: center; width: 100%; gap: 40px;">
                 <div style="display: flex; flex-direction: row; align-items: center; gap: 15px;">
-                    <div class="crafting-grid craft-1x3">
+                    <div class="crafting-grid craft-1x3" id="armorSlots">
                         <div class="inventory-slot"></div>
                         <div class="inventory-slot"></div>
                         <div class="inventory-slot"></div>
@@ -139,7 +139,7 @@
                         <path d="M4 11h10.586l-4.293-4.293 1.414-1.414L19.414 12l-7.707 7.707-1.414-1.414L14.586 13H4v-2z"/>
                     </svg>
                     
-                    <div class="inventory-slot"></div>
+                    <div class="inventory-slot" id="outputSlot"></div>
                 </div>
             </div>
             
@@ -150,9 +150,7 @@
 
             <div style="display: flex; justify-content: center; margin-top: 10px;">
                 <div class="crafting-grid craft-5x1" id="craftingInventory">
-                    <div class="inventory-slot active">
-                        <img src="assets/rock.png" class="item-img" draggable="true" data-name="Rock" data-desc="A good rock.">
-                    </div>
+                    <div class="inventory-slot active"></div>
                     <div class="inventory-slot"></div>
                     <div class="inventory-slot"></div>
                     <div class="inventory-slot"></div>
@@ -223,7 +221,9 @@
         </div>
 
         <div id="inventory">
-            <div class="inventory-slot active"></div>
+            <div class="inventory-slot active">
+                <img src="assets/rock.png" class="item-img" data-name="Rock" data-desc="A good rock.">
+            </div>
             <div class="inventory-slot"></div>
             <div class="inventory-slot"></div>
             <div class="inventory-slot"></div>
