@@ -144,6 +144,7 @@
                         otherPlayers[id].nameColor = data[id].nameColor || null;
                         otherPlayers[id].blocking = data[id].blocking || false;
                         
+                        // FIX: Ensure equipped items are synced consistently!
                         otherPlayers[id].equippedItem = data[id].equippedItem || null;
                         
                         if (data[id].health !== undefined) {
@@ -1098,7 +1099,7 @@
             if (auth.currentUser && auth.currentUser.email === 'thekingofnetashoky@gmail.com') {
                 player.isOwner = true;
                 player.nameColor = '#FFD700';
-            } else if (auth.currentUser && auth.currentUser.email === 'RonysBoing@yahoo.com') {
+            } else if (auth.currentUser && auth.currentUser.email.toLowerCase() === 'ronysboing@yahoo.com') {
                 player.isOwner = true;
                 player.nameColor = '#FFB6C1';
             } else {
@@ -1184,6 +1185,7 @@
                         let isOutput = targetSlot.id === 'outputSlot';
                         
                         if (isArmor || isOutput) {
+                            // Do nothing, reverts to source
                         } else {
                             let existingItem = targetSlot.querySelector('.item-img');
                             if (existingItem && existingItem !== draggedItem) {
@@ -1857,6 +1859,7 @@
             pCtx.translate(baseHandX + idleOffset, baseHandY);
             pCtx.drawImage(assets.rightHand, -player.handSize / 2, -player.handSize / 2, player.handSize, player.handSize);
             
+            // Draw rock in preview
             if (player.inventory && player.inventory[player.equippedSlot] === 'rock') {
                 let rockSize = player.handSize * 1.4;
                 pCtx.save();
