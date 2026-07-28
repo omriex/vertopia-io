@@ -376,25 +376,27 @@
 
         #itemTooltip {
             display: none;
-            position: absolute;
-            background-color: rgba(0, 0, 0, 0.8);
-            border: 2px solid rgba(255, 255, 255, 0.3);
+            position: fixed;
+            background-color: rgba(20, 20, 20, 0.95);
+            border: 3px solid rgba(128, 128, 128, 0.5);
             border-radius: 5px;
-            padding: 8px 12px;
+            padding: 10px 15px;
             color: white;
             font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
             pointer-events: none;
-            z-index: 1000;
-            min-width: 120px;
+            z-index: 10000;
+            min-width: 140px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
         }
         #tooltipName {
             font-weight: bold;
-            font-size: 16px;
-            margin-bottom: 4px;
+            font-size: 18px;
+            margin-bottom: 6px;
             color: #FFD700;
+            text-transform: uppercase;
         }
         #tooltipDesc {
-            font-size: 13px;
+            font-size: 14px;
             color: #ccc;
         }
 
