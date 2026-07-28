@@ -150,7 +150,9 @@
 
             <div style="display: flex; justify-content: center; margin-top: 10px;">
                 <div class="crafting-grid craft-5x1" id="craftingInventory">
-                    <div class="inventory-slot active"></div>
+                    <div class="inventory-slot active">
+                        <img src="assets/rock.png" class="item-img" draggable="true" data-name="Rock" data-desc="A good rock.">
+                    </div>
                     <div class="inventory-slot"></div>
                     <div class="inventory-slot"></div>
                     <div class="inventory-slot"></div>
@@ -165,6 +167,11 @@
 
         <div id="minimapContainer">
             <canvas id="minimapCanvas" width="160" height="160"></canvas>
+        </div>
+
+        <div id="itemTooltip">
+            <div id="tooltipName"></div>
+            <div id="tooltipDesc"></div>
         </div>
 
         <div id="coordsContainer">
