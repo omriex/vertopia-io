@@ -1,5 +1,5 @@
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-        import { getDatabase, ref, set, update as fbUpdate, onValue, onDisconnect } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
+        import { getDatabase, ref, set, push, remove, update as fbUpdate, onValue, onDisconnect } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
         import { getAuth, signInWithPopup, signOut, onAuthStateChanged, GoogleAuthProvider } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
 
         const versionEl = document.querySelector('.version-text');
@@ -39,6 +39,7 @@
         
         const myPlayerId = Math.random().toString(36).substring(2, 15);
         const myPlayerRef = ref(db, `players/${myPlayerId}`);
+        const droppedItemsRef = ref(db, 'droppedItems');
         
         let otherPlayers = {};
         
@@ -115,6 +116,7 @@
                             name: data[id].name,
                             isOwner: data[id].isOwner || false,
                             attackCounter: data[id].attack || 0,
+                            equippedItem: data[id].equippedItem || null,
                             swingTimer: 0,
                             nextHand: 'right',
                             footstepTimer: 0,
@@ -458,30 +460,32 @@
         let activeSlot = 0; 
         let allPlayers = [];
         
-        let droppedItems = [];
+        let localDroppedItems = [];
+        let globalDroppedItems = {};
+        
+        onValue(droppedItemsRef, (snapshot) => {
+            globalDroppedItems = snapshot.val() || {};
+        });
         
         function dropItem(itemType, fromX, fromY, angle) {
             let speed = 200 + Math.random() * 100;
-            droppedItems.push({
+            localDroppedItems.push({
                 type: itemType,
                 x: fromX,
                 y: fromY,
                 vx: Math.cos(angle) * speed,
                 vy: Math.sin(angle) * speed,
-                rot: Math.random() * Math.PI * 2,
-                spin: (Math.random() - 0.5) * 10,
                 timer: 0
             });
         }
         
         function pickupItem(type) {
-            let slots = document.querySelectorAll('#craftingInventory .inventory-slot');
+            let slots = document.querySelectorAll('#inventory .inventory-slot, #craftingInventory .inventory-slot');
             for (let slot of slots) {
                 if (!slot.querySelector('.item-img')) {
                     let img = document.createElement('img');
                     img.src = `assets/${type}.png`;
                     img.className = 'item-img';
-                    img.draggable = true;
                     img.setAttribute('data-name', type.charAt(0).toUpperCase() + type.slice(1));
                     img.setAttribute('data-desc', `A good ${type}.`);
                     slot.appendChild(img);
@@ -922,17 +926,33 @@
                 if (e.button === 0) isMouseDown = true;
                 if (e.button === 2) {
                     let pickedUp = false;
-                    for (let i = droppedItems.length - 1; i >= 0; i--) {
-                        let item = droppedItems[i];
+                    for (let key in globalDroppedItems) {
+                        let item = globalDroppedItems[key];
                         let screenItemX = (width / 2) + (item.x - (player.x + player.width/2)) * currentZoom;
                         let screenItemY = (height / 2) + (item.y - (player.y + player.height/2)) * currentZoom;
                         let dx = mouse.x - screenItemX;
                         let dy = mouse.y - screenItemY;
-                        if (Math.sqrt(dx*dx + dy*dy) < 40 * currentZoom) {
+                        if (Math.sqrt(dx*dx + dy*dy) < 40 * currentZoom && getServerTime() - item.t > 1500) {
                             if (pickupItem(item.type)) {
-                                droppedItems.splice(i, 1);
+                                remove(ref(db, `droppedItems/${key}`));
                                 pickedUp = true;
                                 break;
+                            }
+                        }
+                    }
+                    if (!pickedUp) {
+                        for (let i = localDroppedItems.length - 1; i >= 0; i--) {
+                            let item = localDroppedItems[i];
+                            let screenItemX = (width / 2) + (item.x - (player.x + player.width/2)) * currentZoom;
+                            let screenItemY = (height / 2) + (item.y - (player.y + player.height/2)) * currentZoom;
+                            let dx = mouse.x - screenItemX;
+                            let dy = mouse.y - screenItemY;
+                            if (Math.sqrt(dx*dx + dy*dy) < 40 * currentZoom && item.timer > 1.5) {
+                                if (pickupItem(item.type)) {
+                                    localDroppedItems.splice(i, 1);
+                                    pickedUp = true;
+                                    break;
+                                }
                             }
                         }
                     }
@@ -1094,47 +1114,77 @@
         const tooltipName = document.getElementById('tooltipName');
         const tooltipDesc = document.getElementById('tooltipDesc');
         let draggedItem = null;
+        let dragSourceSlot = null;
+        let activeDragGhost = null;
 
-        document.querySelectorAll('.inventory-slot').forEach(slot => {
-            slot.addEventListener('dragover', (e) => { e.preventDefault(); });
-            slot.addEventListener('drop', (e) => {
+        document.addEventListener('mousedown', (e) => {
+            if (e.button === 0 && e.target.classList.contains('item-img')) {
                 e.preventDefault();
-                if (draggedItem) {
-                    let existingItem = slot.querySelector('.item-img');
-                    if (existingItem && existingItem !== draggedItem) {
-                        let parent = draggedItem.parentNode;
-                        slot.appendChild(draggedItem);
-                        parent.appendChild(existingItem);
-                    } else {
-                        slot.appendChild(draggedItem);
-                    }
-                }
-            });
-        });
-
-        document.body.addEventListener('dragover', (e) => {
-            if (e.target.id === 'gameCanvas' || e.target.id === 'uiLayer') e.preventDefault();
-        });
-        document.body.addEventListener('drop', (e) => {
-            if ((e.target.id === 'gameCanvas' || e.target.id === 'uiLayer') && draggedItem) {
-                let itemName = draggedItem.getAttribute('data-name').toLowerCase();
-                dropItem(itemName, player.x + player.width/2, player.y + player.height/2, player.angle);
-                draggedItem.remove();
-                draggedItem = null;
-                tooltip.style.display = 'none';
-            }
-        });
-
-        document.addEventListener('dragstart', (e) => {
-            if (e.target.classList && e.target.classList.contains('item-img')) {
+                dragSourceSlot = e.target.parentNode;
                 draggedItem = e.target;
                 tooltip.style.display = 'none';
+
+                activeDragGhost = draggedItem.cloneNode(true);
+                activeDragGhost.style.position = 'fixed';
+                activeDragGhost.style.pointerEvents = 'none';
+                activeDragGhost.style.zIndex = '10000';
+                activeDragGhost.style.width = '45px';
+                activeDragGhost.style.height = '45px';
+                activeDragGhost.style.left = (e.clientX - 22) + 'px';
+                activeDragGhost.style.top = (e.clientY - 22) + 'px';
+                document.body.appendChild(activeDragGhost);
+                
+                draggedItem.style.opacity = '0.2';
             }
         });
-        document.addEventListener('dragend', () => { draggedItem = null; });
+
+        document.addEventListener('mousemove', (e) => {
+            if (activeDragGhost) {
+                activeDragGhost.style.left = (e.clientX - 22) + 'px';
+                activeDragGhost.style.top = (e.clientY - 22) + 'px';
+            } else if (tooltip.style.display === 'block') {
+                tooltip.style.left = (e.pageX + 15) + 'px';
+                tooltip.style.top = (e.pageY + 15) + 'px';
+            }
+        });
+
+        document.addEventListener('mouseup', (e) => {
+            if (draggedItem && activeDragGhost) {
+                activeDragGhost.remove();
+                activeDragGhost = null;
+                draggedItem.style.opacity = '1.0';
+
+                let dropTarget = document.elementFromPoint(e.clientX, e.clientY);
+                if (dropTarget) {
+                    let targetSlot = dropTarget.closest('.inventory-slot');
+                    if (targetSlot) {
+                        let isArmor = targetSlot.parentElement && targetSlot.parentElement.id === 'armorSlots';
+                        let isOutput = targetSlot.id === 'outputSlot';
+                        
+                        if (isArmor || isOutput) {
+                            // Do nothing, reverts to source
+                        } else {
+                            let existingItem = targetSlot.querySelector('.item-img');
+                            if (existingItem && existingItem !== draggedItem) {
+                                dragSourceSlot.appendChild(existingItem);
+                                targetSlot.appendChild(draggedItem);
+                            } else {
+                                targetSlot.appendChild(draggedItem);
+                            }
+                        }
+                    } else if (dropTarget.id === 'gameCanvas' || dropTarget.id === 'uiLayer') {
+                        let itemName = draggedItem.getAttribute('data-name').toLowerCase();
+                        dropItem(itemName, player.x + player.width/2, player.y + player.height/2, player.angle);
+                        draggedItem.remove();
+                    }
+                }
+                draggedItem = null;
+                dragSourceSlot = null;
+            }
+        });
 
         document.addEventListener('mouseover', (e) => {
-            if (e.target.classList && e.target.classList.contains('item-img')) {
+            if (e.target.classList && e.target.classList.contains('item-img') && !activeDragGhost) {
                 tooltipName.innerText = e.target.getAttribute('data-name');
                 tooltipDesc.innerText = e.target.getAttribute('data-desc');
                 tooltip.style.display = 'block';
@@ -1143,12 +1193,6 @@
         document.addEventListener('mouseout', (e) => {
             if (e.target.classList && e.target.classList.contains('item-img')) {
                 tooltip.style.display = 'none';
-            }
-        });
-        document.addEventListener('mousemove', (e) => {
-            if (tooltip.style.display === 'block') {
-                tooltip.style.left = (e.pageX + 15) + 'px';
-                tooltip.style.top = (e.pageY + 15) + 'px';
             }
         });
         document.addEventListener('contextmenu', (e) => {
@@ -1351,6 +1395,10 @@
                         player.nextHand = player.nextHand === 'right' ? 'left' : 'right'; 
                         player.swingTimer = 0; 
                     }
+                }
+                
+                if (player.inventory && player.inventory[player.equippedSlot] === 'rock') {
+                    player.nextHand = 'right';
                 }
 
                 let dx = 0;
@@ -1584,28 +1632,47 @@
                         p.swimTransition = Math.max(0.0, (p.swimTransition || 0) - dt * 4.0);
                     }
 
-                    for (let i = droppedItems.length - 1; i >= 0; i--) {
-                        let item = droppedItems[i];
+                    for (let i = localDroppedItems.length - 1; i >= 0; i--) {
+                        let item = localDroppedItems[i];
                         item.x += item.vx * dt;
                         item.y += item.vy * dt;
-                        item.rot += item.spin * dt;
                         item.vx *= Math.pow(0.1, dt);
                         item.vy *= Math.pow(0.1, dt);
-                        item.spin *= Math.pow(0.1, dt);
                         item.timer += dt;
                         
                         let dx = item.x - (player.x + player.width/2);
                         let dy = item.y - (player.y + player.height/2);
                         let dist = Math.sqrt(dx*dx + dy*dy);
-                        if (item.timer > 0.5 && dist < 40) {
+                        if (item.timer > 1.5 && dist < 40) {
                             if (pickupItem(item.type)) {
-                                droppedItems.splice(i, 1);
+                                localDroppedItems.splice(i, 1);
                                 continue;
+                            }
+                        } else if (Math.abs(item.vx) < 5 && Math.abs(item.vy) < 5 && item.timer > 0.5) {
+                            push(droppedItemsRef, {
+                                type: item.type,
+                                x: item.x,
+                                y: item.y,
+                                rot: 0,
+                                t: getServerTime()
+                            });
+                            localDroppedItems.splice(i, 1);
+                        }
+                    }
+                    
+                    for (let key in globalDroppedItems) {
+                        let item = globalDroppedItems[key];
+                        let dx = item.x - (player.x + player.width/2);
+                        let dy = item.y - (player.y + player.height/2);
+                        let dist = Math.sqrt(dx*dx + dy*dy);
+                        if (getServerTime() - item.t > 1500 && dist < 40) {
+                            if (pickupItem(item.type)) {
+                                remove(ref(db, `droppedItems/${key}`));
                             }
                         }
                     }
                     
-                    let hotbarSlots = document.querySelectorAll('#craftingInventory .inventory-slot');
+                    let hotbarSlots = document.querySelectorAll('#inventory .inventory-slot');
                     if (hotbarSlots.length > player.equippedSlot) {
                         let activeSlotEl = hotbarSlots[player.equippedSlot];
                         let itemImg = activeSlotEl.querySelector('.item-img');
@@ -1708,6 +1775,7 @@
                             isOwner: player.isOwner || false,
                             sprint: player.sprintActive,
                             attack: player.attackCounter,
+                            equippedItem: (player.inventory && player.inventory[player.equippedSlot]) ? player.inventory[player.equippedSlot] : null,
                             blocking: player.isBlocking,
                             health: player.health,
                             t: getServerTime()
@@ -1997,6 +2065,17 @@
                         assets.rightHand,
                         -player.handSize / 2, -player.handSize / 2, player.handSize, player.handSize
                     );
+                    
+                    if (p.equippedItem === 'rock') {
+                        let rockSize = player.handSize * 1.1;
+                        let rockOffsetX = -4;
+                        let rockOffsetY = -4;
+                        ctx.save();
+                        ctx.translate(rockOffsetX, rockOffsetY);
+                        if (p.swingTimer <= 0) ctx.rotate(-p.angle);
+                        ctx.drawImage(assets.rock, -rockSize / 2, -rockSize / 2, rockSize, rockSize);
+                        ctx.restore();
+                    }
                     ctx.restore();
 
                     ctx.save();
@@ -2112,10 +2191,13 @@
                 
                 if (player.inventory && player.inventory[player.equippedSlot] === 'rock') {
                     let rockSize = player.handSize * 1.1;
-                    ctx.drawImage(
-                        assets.rock,
-                        -rockSize / 2, -rockSize / 2, rockSize, rockSize
-                    );
+                    let rockOffsetX = -4;
+                    let rockOffsetY = -4;
+                    ctx.save();
+                    ctx.translate(rockOffsetX, rockOffsetY);
+                    if (player.swingTimer <= 0) ctx.rotate(-player.angle);
+                    ctx.drawImage(assets.rock, -rockSize / 2, -rockSize / 2, rockSize, rockSize);
+                    ctx.restore();
                 }
                 ctx.restore();
 
@@ -2150,7 +2232,7 @@
                 }
             }
 
-            droppedItems.forEach(item => {
+            [...localDroppedItems, ...Object.values(globalDroppedItems)].forEach(item => {
                 if (assets[item.type]) {
                     ctx.save();
                     ctx.translate(item.x, item.y);
