@@ -479,7 +479,7 @@
             });
         }
         
-        function pickupItem(type) {
+function pickupItem(type) {
             let mainSlots = document.querySelectorAll('#inventory .inventory-slot');
             for (let slot of mainSlots) {
                 if (!slot.querySelector('.item-img')) {
@@ -953,39 +953,325 @@
                         }
                     }
                     if (!pickedUp) {
-                        
-
-                    if (pIsMoving) {
-                        if (p.footstepTimer <= 0) {
-                            if (p.currentStepSound) {
-                                try { p.currentStepSound.pause(); } catch(e) {}
+                        for (let i = localDroppedItems.length - 1; i >= 0; i--) {
+                            let item = localDroppedItems[i];
+                            let screenItemX = (width / 2) + (item.x - (player.x + player.width/2)) * currentZoom;
+                            let screenItemY = (height / 2) + (item.y - (player.y + player.height/2)) * currentZoom;
+                            let dx = mouse.x - screenItemX;
+                            let dy = mouse.y - screenItemY;
+                            if (Math.sqrt(dx*dx + dy*dy) < 40 * currentZoom && item.timer > 1.5) {
+                                if (pickupItem(item.type)) {
+                                    localDroppedItems.splice(i, 1);
+                                    pickedUp = true;
+                                    break;
+                                }
                             }
-                            if (ptIsWater) p.currentStepSound = playSoundInstance(assets.swimSounds, p.x + r, p.y + r);
-                            else if (ptTile === 2) p.currentStepSound = playSoundInstance(assets.sandSteps, p.x + r, p.y + r);
-                            else p.currentStepSound = playSoundInstance(assets.grassSteps, p.x + r, p.y + r);
-                            
-                            p.footstepTimer = p.sprint ? 0.4 : 0.5;
                         }
                     }
+                    if (!pickedUp) isRightMouseDown = true;
+                }
+            }
+        });
 
-                    if (ptIsWater || (p.sprint && pIsMoving)) {
-                        if (p.particleTimer <= 0) {
-                            particles.push({
-                                x: p.x + r,
-                                y: p.y + r,
-                                size: 48,
-                                alpha: 1.0,
-                                life: 0.6,
-                                maxLife: 0.6,
-                                isWater: ptIsWater
-                            });
-                            p.particleTimer = ptIsWater ? (p.sprint ? 0.4 : 0.75) : 0.2;
+        window.addEventListener('mouseup', (e) => {
+            if (e.button === 0) isMouseDown = false;
+            if (e.button === 2) isRightMouseDown = false;
+        });
+
+        window.addEventListener('wheel', (e) => {
+            if (gameState !== 'PLAYING' && gameState !== 'PREVIEW') return;
+            if (player && player.dead) return;
+            let scrollDirection = e.deltaY > 0 ? -1 : 1; 
+            let baseSpeed = 0.25;
+            if (scrollDirection === 1) { 
+                let distanceToMax = MAX_ZOOM - targetZoom;
+                baseSpeed *= Math.max(0.1, distanceToMax); 
+            } else {
+                let distanceToMin = targetZoom - MIN_ZOOM;
+                baseSpeed *= Math.max(0.1, distanceToMin);
+            }
+            targetZoom += scrollDirection * baseSpeed;
+            targetZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, targetZoom));
+        });
+
+        const assets = {
+            tilesheet: new Image(),
+            playerHead: new Image(),
+            leftHand: new Image(),
+            rightHand: new Image(),
+            sprintParticle: new Image(),
+            tree: new Image(),
+            rock: new Image(),
+            itemBackground: new Image(),
+            swingSound: new Audio('audio/weapon-swing.mp3'),
+            grassSteps: [
+                new Audio('audio/grass-footstep-1.mp3'),
+                new Audio('audio/grass-footstep-2.mp3'),
+                new Audio('audio/grass-footstep-4.mp3')
+            ],
+            sandSteps: [
+                new Audio('audio/sand-footstep-1.mp3'),
+                new Audio('audio/sand-footstep-2.mp3'),
+                new Audio('audio/sand-footstep-3.mp3'),
+                new Audio('audio/sand-footstep-4.mp3')
+            ],
+            swimSounds: [
+                new Audio('audio/swim-1.mp3'),
+                new Audio('audio/swim-2.mp3')
+            ],
+            treeHits: [
+                new Audio('audio/tree-hit-1.mp3'),
+                new Audio('audio/tree-hit-2.mp3'),
+                new Audio('audio/tree-hit-3.mp3')
+            ],
+            damageSounds: [
+                new Audio('audio/damage-1.mp3'),
+                new Audio('audio/damage-2.mp3'),
+                new Audio('audio/damage-3.mp3')
+            ]
+        };
+
+        let gameLoopStarted = false;
+        
+        window.checkCanPlay = function() {
+            if (loadedCount >= 8 && window.turnstileSolved && !gameLoopStarted) {
+                gameLoopStarted = true;
+                playBtn.innerText = 'PLAY';
+                playBtn.disabled = false;
+                
+                lastLogicTime = performance.now();
+                setInterval(logicLoop, 1000 / 60);
+                requestAnimationFrame(renderLoop);
+            }
+        };
+
+        let loadedCount = 0;
+        function onAssetLoad() {
+            loadedCount++;
+            window.checkCanPlay();
+        }
+
+
+        function setupAsset(img, src) {
+            let counted = false;
+            function count() {
+                if (!counted) { counted = true; onAssetLoad(); }
+            }
+            img.onload = count;
+            img.onerror = count;
+            img.src = src;
+            if (img.complete) count();
+        }
+
+        setupAsset(assets.tilesheet, 'assets/vertopia-tilesheet.png');
+        setupAsset(assets.playerHead, 'assets/player-head.png');
+        setupAsset(assets.leftHand, 'assets/player-lefthand.png');
+        setupAsset(assets.rightHand, 'assets/player-righthand.png');
+        setupAsset(assets.sprintParticle, 'assets/sprint-particle.png');
+        setupAsset(assets.tree, 'assets/tree.png');
+        setupAsset(assets.rock, 'assets/rock.png');
+        setupAsset(assets.itemBackground, 'assets/item-background.png');
+
+        playBtn.addEventListener('click', () => {
+            let inputName = nameInput.value.trim();
+            let baseName = inputName === "" ? "Vertopian" : inputName;
+            
+            let newName = baseName;
+            let counter = 1;
+            let nameExists = () => {
+                for (let id in otherPlayers) {
+                    if (otherPlayers[id].name === newName) return true;
+                }
+                return false;
+            };
+            while (nameExists()) {
+                newName = baseName + "-" + counter;
+                counter++;
+            }
+            player.name = newName;
+            
+            if (auth.currentUser && auth.currentUser.email === 'thekingofnetashoky@gmail.com') {
+                player.isOwner = true;
+            } else {
+                player.isOwner = false;
+            }
+            
+            allPlayers = [];
+            allPlayers.push({ name: player.name });
+            
+            mainMenu.style.display = 'none';
+            locationOverlay.style.display = 'flex';
+            gameState = 'PREVIEW';
+            
+            selectedRegX = 0;
+            selectedRegZ = 0;
+            spawnGridX = 0;
+            spawnGridZ = 0;
+            previewX = MAP_CENTER * TILE_SIZE;
+            previewZ = MAP_CENTER * TILE_SIZE;
+            
+            updateSpawnInfo();
+            renderSpawnGrid();
+            
+            player.dead = false;
+            player.health = 100;
+            player.energy = 100;
+            player.damageNegationTimer = 0;
+            player.kbVx = 0;
+            player.kbVy = 0;
+            player.lastDamageTime = getServerTime();
+        });
+
+        const tooltip = document.getElementById('itemTooltip');
+        const tooltipName = document.getElementById('tooltipName');
+        const tooltipDesc = document.getElementById('tooltipDesc');
+        let draggedItem = null;
+        let dragSourceSlot = null;
+        let activeDragGhost = null;
+
+        document.addEventListener('mousedown', (e) => {
+            if (e.button === 0 && e.target.classList.contains('item-img')) {
+                e.preventDefault();
+                dragSourceSlot = e.target.parentNode;
+                draggedItem = e.target;
+                tooltip.style.display = 'none';
+
+                activeDragGhost = draggedItem.cloneNode(true);
+                activeDragGhost.style.position = 'fixed';
+                activeDragGhost.style.pointerEvents = 'none';
+                activeDragGhost.style.zIndex = '10000';
+                activeDragGhost.style.width = '45px';
+                activeDragGhost.style.height = '45px';
+                activeDragGhost.style.left = (e.clientX - 22) + 'px';
+                activeDragGhost.style.top = (e.clientY - 22) + 'px';
+                document.body.appendChild(activeDragGhost);
+                
+                draggedItem.style.opacity = '0.2';
+            }
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if (activeDragGhost) {
+                activeDragGhost.style.left = (e.clientX - 22) + 'px';
+                activeDragGhost.style.top = (e.clientY - 22) + 'px';
+            } else if (tooltip.style.display === 'block') {
+                tooltip.style.left = (e.pageX + 15) + 'px';
+                tooltip.style.top = (e.pageY + 15) + 'px';
+            }
+        });
+
+        document.addEventListener('mouseup', (e) => {
+            if (draggedItem && activeDragGhost) {
+                activeDragGhost.remove();
+                activeDragGhost = null;
+                draggedItem.style.opacity = '1.0';
+
+                let dropTarget = document.elementFromPoint(e.clientX, e.clientY);
+                if (dropTarget) {
+                    let targetSlot = dropTarget.closest('.inventory-slot');
+                    if (targetSlot) {
+                        let isArmor = targetSlot.parentElement && targetSlot.parentElement.id === 'armorSlots';
+                        let isOutput = targetSlot.id === 'outputSlot';
+                        
+                        if (isArmor || isOutput) {
+                            // Do nothing, reverts to source
+                        } else {
+                            let existingItem = targetSlot.querySelector('.item-img');
+                            if (existingItem && existingItem !== draggedItem) {
+                                dragSourceSlot.appendChild(existingItem);
+                                targetSlot.appendChild(draggedItem);
+                            } else {
+                                targetSlot.appendChild(draggedItem);
+                            }
                         }
+                    } else if (dropTarget.id === 'gameCanvas' || dropTarget.id === 'uiLayer') {
+                        let itemName = draggedItem.getAttribute('data-name').toLowerCase();
+                        dropItem(itemName, player.x + player.width/2, player.y + player.height/2, player.angle);
+                        draggedItem.remove();
                     }
                 }
+                draggedItem = null;
+                dragSourceSlot = null;
+            }
+        });
 
+        document.addEventListener('mouseover', (e) => {
+            if (e.target.classList && e.target.classList.contains('item-img') && !activeDragGhost) {
+                tooltipName.innerText = e.target.getAttribute('data-name');
+                tooltipDesc.innerText = e.target.getAttribute('data-desc');
+                tooltip.style.display = 'block';
+            }
+        });
+        document.addEventListener('mouseout', (e) => {
+            if (e.target.classList && e.target.classList.contains('item-img')) {
+                tooltip.style.display = 'none';
+            }
+        });
+        document.addEventListener('contextmenu', (e) => {
+            if (e.target.classList && e.target.classList.contains('item-img')) {
+                e.preventDefault();
+                let itemName = e.target.getAttribute('data-name').toLowerCase();
+                dropItem(itemName, player.x + player.width/2, player.y + player.height/2, player.angle);
+                e.target.remove();
+                tooltip.style.display = 'none';
+            }
+        });
+        
+        document.getElementById('loginBtn').addEventListener('click', () => {
+            if (auth.currentUser) {
+                signOut(auth);
+            } else {
+                signInWithPopup(auth, googleProvider).catch(() => {});
+            }
+        });
+
+        onAuthStateChanged(auth, (user) => {
+            const loginText = document.querySelector('#loginBtn .login-text');
+            if (user) {
+                loginText.textContent = 'Logout';
+                if (user.displayName && !nameInput.value.trim()) {
+                    nameInput.value = user.displayName.substring(0, 15);
+                }
+            } else {
+                loginText.textContent = 'Login';
+            }
+        });
+
+        let currentPing = 0;
+        setInterval(() => {
+            if (gameState === 'PLAYING') {
+                let start = performance.now();
+                set(ref(db, `pings/${myPlayerId}`), start).then(() => {
+                    currentPing = Math.round(performance.now() - start);
+                    let pingEl = document.getElementById('pingValue');
+                    if (pingEl) pingEl.innerText = currentPing;
+                }).catch(() => {});
+            }
+        }, 2000);
+
+function update(dt) {
+            let zoomLerp = Math.min(10 * dt, 1);
+            currentZoom += (targetZoom - currentZoom) * zoomLerp; 
+
+            if (gameState === 'MENU') {
+                menuAngle += 0.08 * dt; 
+            } else if (gameState === 'PLAYING' || gameState === 'DEAD') {
+                
+                // Sync the equipped slot and inventory logic!
                 player.equippedSlot = activeSlot;
                 
+                let hotbarSlots = document.querySelectorAll('#inventory .inventory-slot');
+                if (hotbarSlots.length > player.equippedSlot) {
+                    let activeSlotEl = hotbarSlots[player.equippedSlot];
+                    let itemImg = activeSlotEl.querySelector('.item-img');
+                    if (itemImg) {
+                        player.inventory[player.equippedSlot] = itemImg.getAttribute('data-name').toLowerCase();
+                    } else {
+                        player.inventory[player.equippedSlot] = null;
+                    }
+                }
+                
+                // Process local dropped items physics out here so they work when alone!
                 for (let i = localDroppedItems.length - 1; i >= 0; i--) {
                     let item = localDroppedItems[i];
                     item.x += item.vx * dt;
@@ -1025,15 +1311,420 @@
                         }
                     }
                 }
+
+                if (player.damageNegationTimer > 0) player.damageNegationTimer -= dt;
+                if (player.dead && player.deathTimer > 0) player.deathTimer -= dt;
                 
-                let hotbarSlots = document.querySelectorAll('#inventory .inventory-slot');
-                if (hotbarSlots.length > player.equippedSlot) {
-                    let activeSlotEl = hotbarSlots[player.equippedSlot];
-                    let itemImg = activeSlotEl.querySelector('.item-img');
-                    if (itemImg) {
-                        player.inventory[player.equippedSlot] = itemImg.getAttribute('data-name').toLowerCase();
+                if (!player.dead) {
+                    if (isRightMouseDown && player.swingTimer <= 0 && !player.isWater) {
+                        player.isBlocking = true;
                     } else {
-                        player.inventory[player.equippedSlot] = null;
+                        player.isBlocking = false;
+                    }
+                } else {
+                    player.isBlocking = false;
+                    player.sprintActive = false;
+                    keys.w = keys.a = keys.s = keys.d = keys.shift = false;
+                }
+
+                if (Math.abs(player.kbVx) > 1 || Math.abs(player.kbVy) > 1) {
+                    player.x += player.kbVx * dt;
+                    player.y += player.kbVy * dt;
+                    
+                    let friction = Math.pow(0.02, dt); 
+                    player.kbVx *= friction;
+                    player.kbVy *= friction;
+                } else {
+                    player.kbVx = 0;
+                    player.kbVy = 0;
+                }
+
+                if (player.isBlocking) {
+                    player.blockAmount = Math.min(1.0, player.blockAmount + dt * 8.0);
+                } else {
+                    player.blockAmount = Math.max(0.0, player.blockAmount - dt * 8.0);
+                }
+
+                for (let id in otherPlayers) {
+                    let op = otherPlayers[id];
+                    if (op.blocking) {
+                        op.blockAmount = Math.min(1.0, op.blockAmount + dt * 8.0);
+                    } else {
+                        op.blockAmount = Math.max(0.0, op.blockAmount - dt * 8.0);
+                    }
+                }
+
+                if (isMouseDown && !player.isBlocking && !player.dead) {
+                    attemptAttack();
+                }
+
+                for (let i = player.chatMessages.length - 1; i >= 0; i--) {
+                    player.chatMessages[i].timer -= dt;
+                    if (player.chatMessages[i].timer <= 0) {
+                        player.chatMessages.splice(i, 1);
+                    }
+                }
+
+                for (let id in otherPlayers) {
+                    for (let i = otherPlayers[id].chatMessages.length - 1; i >= 0; i--) {
+                        otherPlayers[id].chatMessages[i].timer -= dt;
+                        if (otherPlayers[id].chatMessages[i].timer <= 0) {
+                            otherPlayers[id].chatMessages.splice(i, 1);
+                        }
+                    }
+                }
+
+                let focusX = player.x + (player.width / 2) + cameraPanOffset.x;
+                let focusY = player.y + (player.height / 2) + cameraPanOffset.y;
+                if (gameState === 'DEAD' && player.killedBy && otherPlayers[player.killedBy]) {
+                    focusX = otherPlayers[player.killedBy].x + player.width / 2;
+                    focusY = otherPlayers[player.killedBy].y + player.height / 2;
+                }
+
+                const visibleWidth = width / currentZoom;
+                const visibleHeight = height / currentZoom;
+                const startCol = Math.floor((focusX - visibleWidth / 2) / TILE_SIZE) - 2;
+                const endCol = Math.ceil((focusX + visibleWidth / 2) / TILE_SIZE) + 2;
+                const startRow = Math.floor((focusY - visibleHeight / 2) / TILE_SIZE) - 2;
+                const endRow = Math.ceil((focusY + visibleHeight / 2) / TILE_SIZE) + 2;
+
+                for (let r = startRow; r <= endRow; r++) {
+                    for (let c = startCol; c <= endCol; c++) {
+                        let id = c + "_" + r;
+                        if (trees.has(id)) {
+                            let t = trees.get(id);
+                            if (!t.dead || t.deathTimer > 0) {
+                                if (!t.inView) {
+                                    t.inView = true;
+                                    activeTrees.add(t);
+                                }
+                            }
+                        }
+                    }
+                }
+
+                for (let t of activeTrees) {
+                    if (t.hitTimer > 0) {
+                        t.hitTimer -= dt;
+                        if (t.hitTimer <= 0) t.hitTimer = 0;
+                    }
+                    if (t.dead && t.deathTimer > 0) {
+                        t.deathTimer -= dt;
+                        if (t.deathTimer <= 0) t.deathTimer = 0;
+                    }
+                    
+                    let ptC = Math.floor(t.x / TILE_SIZE);
+                    let ptR = Math.floor(t.y / TILE_SIZE);
+                    let actuallyInView = (ptC >= startCol && ptC <= endCol && ptR >= startRow && ptR <= endRow);
+                    
+                    if (actuallyInView && !t.dead) {
+                        t.inView = true;
+                        if (t.visibleState < 1.0) {
+                            t.visibleState += dt * 5.0; 
+                            if (t.visibleState > 1.0) t.visibleState = 1.0;
+                        }
+                    } else {
+                        t.inView = false;
+                        if (t.visibleState > 0.0) {
+                            t.visibleState -= dt * 5.0;
+                            if (t.visibleState < 0.0) t.visibleState = 0.0;
+                        }
+                    }
+                    
+                    if (!t.inView && t.visibleState === 0 && t.deathTimer <= 0 && t.hitTimer <= 0) {
+                        activeTrees.delete(t);
+                    }
+                }
+
+                for (let i = particles.length - 1; i >= 0; i--) {
+                    let p = particles[i];
+                    p.life -= dt;
+                    if (p.life <= 0) {
+                        particles.splice(i, 1);
+                    } else {
+                        let ratio = p.life / p.maxLife;
+                        if (p.isWater) {
+                            p.alpha = ratio * 1.0; 
+                            p.size = 24 + (1 - ratio) * 60;
+                        } else {
+                            p.alpha = ratio * 1.0;
+                            p.size = ratio * 48;
+                        }
+                    }
+                }
+
+                if (player.cooldownTimer > 0) player.cooldownTimer -= dt;
+                if (player.footstepTimer > 0) player.footstepTimer -= dt;
+
+                if (player.swingTimer > 0) {
+                    player.swingTimer += dt;
+                    if (player.swingTimer >= player.swingDuration) {
+                        player.nextHand = player.nextHand === 'right' ? 'left' : 'right'; 
+                        player.swingTimer = 0; 
+                    }
+                }
+                
+                if (player.inventory && player.inventory[player.equippedSlot] === 'rock') {
+                    player.nextHand = 'right';
+                }
+
+                let dx = 0;
+                let dy = 0;
+                if (!player.dead) {
+                    if (keys.w) dy -= 1;
+                    if (keys.s) dy += 1;
+                    if (keys.a) dx -= 1;
+                    if (keys.d) dx += 1;
+                }
+
+                if (dx !== 0 && dy !== 0) {
+                    const length = Math.sqrt(dx * dx + dy * dy);
+                    dx /= length;
+                    dy /= length;
+                }
+
+                let isMoving = dx !== 0 || dy !== 0;
+
+                if (keys.shift && isMoving && player.energy > 15 && !player.exhausted && !player.isBlocking) {
+                    player.sprintActive = true;
+                }
+                if (!keys.shift || !isMoving || player.energy <= 0 || player.exhausted || player.isBlocking) {
+                    player.sprintActive = false;
+                }
+                
+                let tileX = Math.floor((player.x + player.width / 2) / TILE_SIZE);
+                let tileY = Math.floor((player.y + player.height / 2) / TILE_SIZE);
+                tileX = Math.max(0, Math.min(MAP_COLS - 1, tileX));
+                tileY = Math.max(0, Math.min(MAP_ROWS - 1, tileY));
+                let currentTile = mapData[tileY * MAP_COLS + tileX]; 
+                let isWater = currentTile === 1;
+                player.isWater = isWater;
+                if (isWater) {
+                    player.swimTransition = Math.min(1.0, (player.swimTransition || 0) + dt * 4.0);
+                } else {
+                    player.swimTransition = Math.max(0.0, (player.swimTransition || 0) - dt * 4.0);
+                }
+
+                if (isWater) { 
+                    player.speed = player.sprintActive ? 96 : 64;
+                } else {
+                    player.speed = player.sprintActive ? 288 : 192;
+                }
+
+                if (player.isBlocking) {
+                    player.speed *= 0.75;
+                }
+
+                if (player.sprintActive && !player.isBlocking) {
+                    player.energy -= 20 * dt; 
+                    player.regenDelay = Math.max(player.regenDelay, 1.5);
+                    if (player.energy <= 0) {
+                        player.energy = 0;
+                        player.exhausted = true;
+                        player.regenDelay = 5.0;
+                    }
+                }
+
+                if (isWater || (player.sprintActive && isMoving)) {
+                    player.particleTimer -= dt;
+                    if (player.particleTimer <= 0) {
+                        particles.push({
+                            x: player.x + player.width / 2,
+                            y: player.y + player.height / 2,
+                            size: 48,
+                            alpha: 1.0,
+                            life: 0.6,
+                            maxLife: 0.6,
+                            isWater: isWater
+                        });
+                        player.particleTimer = isWater ? (player.sprintActive ? 0.4 : 0.75) : 0.2;
+                    }
+                }
+
+                if (!player.dead && player.health < 100) {
+                    if (getServerTime() - player.lastDamageTime > 15000) {
+                        player.health += 5 * dt; 
+                        if (player.health > 100) player.health = 100;
+                    }
+                }
+
+                if (player.regenDelay > 0) {
+                    player.regenDelay -= dt;
+                    if (player.regenDelay <= 0) {
+                        player.exhausted = false;
+                    }
+                } else {
+                    if (!player.sprintActive && player.energy < 100) {
+                        player.energy += 15 * dt; 
+                        if (player.energy > 100) player.energy = 100;
+                    }
+                }
+
+                energyFill.style.width = player.energy + '%';
+                healthFill.style.width = player.health + '%';
+
+                if (isMoving) {
+                    let moveX = dx * player.speed * dt;
+                    let moveY = dy * player.speed * dt;
+
+                    player.x += moveX;
+                    player.y += moveY;
+
+                    if (player.footstepTimer <= 0) {
+                        if (player.currentStepSound) {
+                            try { player.currentStepSound.pause(); } catch(e) {}
+                            player.currentStepSound = null;
+                        }
+                        if (isWater) { 
+                            player.currentStepSound = playSoundInstance(assets.swimSounds, player.x + player.width / 2, player.y + player.height / 2);
+                        } else if (currentTile === 2) { 
+                            player.currentStepSound = playSoundInstance(assets.sandSteps, player.x + player.width / 2, player.y + player.height / 2);
+                        } else { 
+                            player.currentStepSound = playSoundInstance(assets.grassSteps, player.x + player.width / 2, player.y + player.height / 2);
+                        }
+                        player.footstepTimer = player.sprintActive ? 0.4 : 0.5; 
+                    }
+                } else {
+                    if (player.currentStepSound) {
+                        try { 
+                            player.currentStepSound.pause();
+                            player.currentStepSound.currentTime = 0;
+                        } catch(e) {}
+                        player.currentStepSound = null;
+                    }
+                }
+
+                let r = player.width / 2;
+                let cx = player.x + r;
+                let cy = player.y + r;
+                
+                let pTileX = Math.floor(cx / TILE_SIZE);
+                let pTileY = Math.floor(cy / TILE_SIZE);
+                for (let tr = pTileY - 2; tr <= pTileY + 2; tr++) {
+                    for (let tc = pTileX - 2; tc <= pTileX + 2; tc++) {
+                        let id = tc + "_" + tr;
+                        if (trees.has(id)) {
+                            let t = trees.get(id);
+                            if (t.hp > 0) {
+                                let tRadius = 48 * (t.baseScale || 1.0);
+                                let distX = cx - t.cx;
+                                let distY = cy - t.cy;
+                                let distance = Math.sqrt(distX*distX + distY*distY);
+                                
+                                if (distance < r + tRadius) {
+                                    let overlap = (r + tRadius) - distance;
+                                    if (distance === 0) {
+                                        player.y -= overlap;
+                                    } else {
+                                        player.x += (distX / distance) * overlap;
+                                        player.y += (distY / distance) * overlap;
+                                    }
+                                    cx = player.x + r;
+                                    cy = player.y + r;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                let minRadius = 40;
+                for (let id in otherPlayers) {
+                    let p = otherPlayers[id];
+                    if (p.dead) continue;
+                    let pcx = p.x + r;
+                    let pcy = p.y + r;
+                    
+                    let pdx = cx - pcx;
+                    let pdy = cy - pcy;
+                    let dist = Math.sqrt(pdx*pdx + pdy*pdy);
+
+                    if (dist < minRadius && dist > 0) {
+                        let overlap = minRadius - dist;
+                        let nx = pdx / dist;
+                        let ny = pdy / dist;
+                        
+                        player.x += nx * overlap;
+                        player.y += ny * overlap;
+                        
+                        cx = player.x + r;
+                        cy = player.y + r;
+                    }
+                }
+
+                for (let id in otherPlayers) {
+                    let p = otherPlayers[id];
+                    
+                    if (p.dead && p.deathTimer > 0) {
+                        p.deathTimer -= dt;
+                    }
+
+                    let lerpSpeed = 15 * dt;
+                    if (p.x === undefined) p.x = p.targetX;
+                    if (p.y === undefined) p.y = p.targetY;
+                    if (p.angle === undefined) p.angle = p.targetAngle;
+
+                    p.x += (p.targetX - p.x) * lerpSpeed;
+                    p.y += (p.targetY - p.y) * lerpSpeed;
+
+                    let diff = p.targetAngle - p.angle;
+                    while (diff < -Math.PI) diff += Math.PI * 2;
+                    while (diff > Math.PI) diff -= Math.PI * 2;
+                    p.angle += diff * lerpSpeed;
+
+                    if (p.swingTimer > 0) {
+                        p.swingTimer += dt;
+                        if (p.swingTimer >= player.swingDuration) {
+                            p.nextHand = p.nextHand === 'right' ? 'left' : 'right';
+                            p.swingTimer = 0;
+                        }
+                    }
+
+                    let distMoved = Math.sqrt((p.targetX - p.x)**2 + (p.targetY - p.y)**2);
+                    let pIsMoving = distMoved > 2.0;
+                    if (p.dead) pIsMoving = false;
+
+                    if (p.footstepTimer > 0) p.footstepTimer -= dt;
+                    if (p.particleTimer > 0) p.particleTimer -= dt;
+
+                    let ptX = Math.floor((p.x + r) / TILE_SIZE);
+                    let ptY = Math.floor((p.y + r) / TILE_SIZE);
+                    ptX = Math.max(0, Math.min(MAP_COLS - 1, ptX));
+                    ptY = Math.max(0, Math.min(MAP_ROWS - 1, ptY));
+                    let ptTile = mapData[ptY * MAP_COLS + ptX];
+                    let ptIsWater = ptTile === 1;
+                    p.isWater = ptIsWater;
+                    if (ptIsWater) {
+                        p.swimTransition = Math.min(1.0, (p.swimTransition || 0) + dt * 4.0);
+                    } else {
+                        p.swimTransition = Math.max(0.0, (p.swimTransition || 0) - dt * 4.0);
+                    }
+
+                    if (pIsMoving) {
+                        if (p.footstepTimer <= 0) {
+                            if (p.currentStepSound) {
+                                try { p.currentStepSound.pause(); } catch(e) {}
+                            }
+                            if (ptIsWater) p.currentStepSound = playSoundInstance(assets.swimSounds, p.x + r, p.y + r);
+                            else if (ptTile === 2) p.currentStepSound = playSoundInstance(assets.sandSteps, p.x + r, p.y + r);
+                            else p.currentStepSound = playSoundInstance(assets.grassSteps, p.x + r, p.y + r);
+                            
+                            p.footstepTimer = p.sprint ? 0.4 : 0.5;
+                        }
+                    }
+
+                    if (ptIsWater || (p.sprint && pIsMoving)) {
+                        if (p.particleTimer <= 0) {
+                            particles.push({
+                                x: p.x + r,
+                                y: p.y + r,
+                                size: 48,
+                                alpha: 1.0,
+                                life: 0.6,
+                                maxLife: 0.6,
+                                isWater: ptIsWater
+                            });
+                            p.particleTimer = ptIsWater ? (p.sprint ? 0.4 : 0.75) : 0.2;
+                        }
                     }
                 }
 
@@ -1221,7 +1912,7 @@
             ctx.restore();
         }
 
-        function draw() {
+function draw() {
             ctx.fillStyle = '#000000';
             ctx.fillRect(0, 0, width, height);
 
@@ -1282,6 +1973,8 @@
 
 
             if (gameState === 'PLAYING' || gameState === 'DEAD') {
+                
+                // Draw dropped items BELOW players
                 [...localDroppedItems, ...Object.values(globalDroppedItems)].forEach(item => {
                     if (assets[item.type]) {
                         ctx.save();
@@ -1404,10 +2097,11 @@
                     
                     if (p.equippedItem === 'rock') {
                         let rockSize = player.handSize * 1.1;
-                        let rockOffsetX = -8;
-                        let rockOffsetY = -12;
+                        let rockOffsetX = -6; // Adjusted up and left
+                        let rockOffsetY = -10;
                         ctx.save();
                         ctx.translate(rockOffsetX, rockOffsetY);
+                        // Rotation inherited from hand!
                         ctx.drawImage(assets.rock, -rockSize / 2, -rockSize / 2, rockSize, rockSize);
                         ctx.restore();
                     }
@@ -1526,10 +2220,11 @@
                 
                 if (player.inventory && player.inventory[player.equippedSlot] === 'rock') {
                     let rockSize = player.handSize * 1.1;
-                    let rockOffsetX = -8;
-                    let rockOffsetY = -12;
+                    let rockOffsetX = -6; // Adjusted up and left
+                    let rockOffsetY = -10;
                     ctx.save();
                     ctx.translate(rockOffsetX, rockOffsetY);
+                    // Rotation inherited from hand seamlessly!
                     ctx.drawImage(assets.rock, -rockSize / 2, -rockSize / 2, rockSize, rockSize);
                     ctx.restore();
                 }
