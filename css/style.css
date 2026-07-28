@@ -363,6 +363,40 @@
         }
         .inventory-slot:hover { border-color: white; }
         .inventory-slot.active { border-color: white; background-color: rgba(255, 255, 255, 0.2); }
+        .item-img {
+            width: 80%;
+            height: 80%;
+            object-fit: contain;
+            cursor: grab;
+            user-select: none;
+        }
+        .item-img:active {
+            cursor: grabbing;
+        }
+
+        #itemTooltip {
+            display: none;
+            position: absolute;
+            background-color: rgba(0, 0, 0, 0.8);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-radius: 5px;
+            padding: 8px 12px;
+            color: white;
+            font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+            pointer-events: none;
+            z-index: 1000;
+            min-width: 120px;
+        }
+        #tooltipName {
+            font-weight: bold;
+            font-size: 16px;
+            margin-bottom: 4px;
+            color: #FFD700;
+        }
+        #tooltipDesc {
+            font-size: 13px;
+            color: #ccc;
+        }
 
         #minimapContainer {
             display: none;
