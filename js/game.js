@@ -116,6 +116,7 @@
                             sprint: data[id].sprint || false,
                             name: data[id].name,
                             isOwner: data[id].isOwner || false,
+                            nameColor: data[id].nameColor || null,
                             attackCounter: data[id].attack || 0,
                             equippedItem: data[id].equippedItem || null,
                             swingTimer: 0,
@@ -140,6 +141,7 @@
                         otherPlayers[id].sprint = data[id].sprint || false;
                         otherPlayers[id].name = data[id].name;
                         otherPlayers[id].isOwner = data[id].isOwner || false;
+                        otherPlayers[id].nameColor = data[id].nameColor || null;
                         otherPlayers[id].blocking = data[id].blocking || false;
                         
                         otherPlayers[id].equippedItem = data[id].equippedItem || null;
@@ -1095,8 +1097,13 @@
             
             if (auth.currentUser && auth.currentUser.email === 'thekingofnetashoky@gmail.com') {
                 player.isOwner = true;
+                player.nameColor = '#FFD700';
+            } else if (auth.currentUser && auth.currentUser.email === 'RonysBoing@yahoo.com') {
+                player.isOwner = true;
+                player.nameColor = '#FFB6C1';
             } else {
                 player.isOwner = false;
+                player.nameColor = null;
             }
             
             allPlayers = [];
@@ -1789,6 +1796,7 @@
                             angle: Number(player.angle.toFixed(2)),
                             name: player.name,
                             isOwner: player.isOwner || false,
+                            nameColor: player.nameColor || null,
                             sprint: player.sprintActive,
                             attack: player.attackCounter,
                             equippedItem: (player.inventory && player.inventory[player.equippedSlot]) ? player.inventory[player.equippedSlot] : null,
@@ -2125,7 +2133,7 @@
                     if (!p.dead) {
                         ctx.font = 'bold 15px "Segoe UI", sans-serif';
                         ctx.textAlign = 'center';
-                        ctx.fillStyle = p.isOwner ? '#FFD700' : 'white';
+                        ctx.fillStyle = p.nameColor ? p.nameColor : (p.isOwner ? '#FFD700' : 'white');
                         ctx.fillText(p.name, p.x + (player.width / 2), p.y + player.height + 25);
                         
                         if (p.chatMessages) {
@@ -2250,7 +2258,7 @@
                     const textX = player.x + (player.width / 2);
                     const textY = player.y + player.height + 25;
                     
-                    ctx.fillStyle = player.isOwner ? '#FFD700' : 'white';
+                    ctx.fillStyle = player.nameColor ? player.nameColor : (player.isOwner ? '#FFD700' : 'white');
                     ctx.fillText(player.name, textX, textY);
                     
                     if (player.chatMessages) {
