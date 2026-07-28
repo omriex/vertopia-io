@@ -432,7 +432,7 @@
             swingDuration: 0.216, 
             swingCooldown: 0.35,
             inventory: ['rock', null, null, null, null],
-            equippedSlot: 0  
+            equippedSlot: 0,
             cooldownTimer: 0,
             nextHand: 'right',
             footstepTimer: 0,
