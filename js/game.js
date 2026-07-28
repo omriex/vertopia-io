@@ -1,3 +1,4 @@
+
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
         import { getDatabase, ref, set, push, remove, update as fbUpdate, onValue, onDisconnect } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
         import { getAuth, signInWithPopup, signOut, onAuthStateChanged, GoogleAuthProvider } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
@@ -140,6 +141,8 @@
                         otherPlayers[id].name = data[id].name;
                         otherPlayers[id].isOwner = data[id].isOwner || false;
                         otherPlayers[id].blocking = data[id].blocking || false;
+                        
+                        otherPlayers[id].equippedItem = data[id].equippedItem || null;
                         
                         if (data[id].health !== undefined) {
                             otherPlayers[id].health = data[id].health;
@@ -479,7 +482,7 @@
             });
         }
         
-function pickupItem(type) {
+        function pickupItem(type) {
             let mainSlots = document.querySelectorAll('#inventory .inventory-slot');
             for (let slot of mainSlots) {
                 if (!slot.querySelector('.item-img')) {
@@ -506,6 +509,7 @@ function pickupItem(type) {
             }
             return false;
         }
+
         const keys = { w: false, a: false, s: false, d: false, shift: false };
         const mouse = { x: width / 2, y: height / 2 };
         let isMouseDown = false; 
@@ -1051,7 +1055,6 @@ function pickupItem(type) {
             window.checkCanPlay();
         }
 
-
         function setupAsset(img, src) {
             let counted = false;
             function count() {
@@ -1174,7 +1177,6 @@ function pickupItem(type) {
                         let isOutput = targetSlot.id === 'outputSlot';
                         
                         if (isArmor || isOutput) {
-                            // Do nothing, reverts to source
                         } else {
                             let existingItem = targetSlot.querySelector('.item-img');
                             if (existingItem && existingItem !== draggedItem) {
@@ -1249,7 +1251,7 @@ function pickupItem(type) {
             }
         }, 2000);
 
-function update(dt) {
+        function update(dt) {
             let zoomLerp = Math.min(10 * dt, 1);
             currentZoom += (targetZoom - currentZoom) * zoomLerp; 
 
@@ -1257,7 +1259,6 @@ function update(dt) {
                 menuAngle += 0.08 * dt; 
             } else if (gameState === 'PLAYING' || gameState === 'DEAD') {
                 
-                // Sync the equipped slot and inventory logic!
                 player.equippedSlot = activeSlot;
                 
                 let hotbarSlots = document.querySelectorAll('#inventory .inventory-slot');
@@ -1271,7 +1272,6 @@ function update(dt) {
                     }
                 }
                 
-                // Process local dropped items physics out here so they work when alone!
                 for (let i = localDroppedItems.length - 1; i >= 0; i--) {
                     let item = localDroppedItems[i];
                     item.x += item.vx * dt;
@@ -1848,6 +1848,15 @@ function update(dt) {
             pCtx.save();
             pCtx.translate(baseHandX + idleOffset, baseHandY);
             pCtx.drawImage(assets.rightHand, -player.handSize / 2, -player.handSize / 2, player.handSize, player.handSize);
+            
+            if (player.inventory && player.inventory[player.equippedSlot] === 'rock') {
+                let rockSize = player.handSize * 1.4;
+                pCtx.save();
+                pCtx.rotate(Math.PI);
+                pCtx.drawImage(assets.rock, -rockSize / 2, -rockSize / 2, rockSize, rockSize);
+                pCtx.restore();
+            }
+            
             pCtx.restore();
 
             pCtx.save();
@@ -1912,7 +1921,7 @@ function update(dt) {
             ctx.restore();
         }
 
-function draw() {
+        function draw() {
             ctx.fillStyle = '#000000';
             ctx.fillRect(0, 0, width, height);
 
@@ -1974,7 +1983,6 @@ function draw() {
 
             if (gameState === 'PLAYING' || gameState === 'DEAD') {
                 
-                // Draw dropped items BELOW players
                 [...localDroppedItems, ...Object.values(globalDroppedItems)].forEach(item => {
                     if (assets[item.type]) {
                         ctx.save();
@@ -2096,12 +2104,9 @@ function draw() {
                     );
                     
                     if (p.equippedItem === 'rock') {
-                        let rockSize = player.handSize * 1.1;
-                        let rockOffsetX = -6; // Adjusted up and left
-                        let rockOffsetY = -10;
+                        let rockSize = player.handSize * 1.4;
                         ctx.save();
-                        ctx.translate(rockOffsetX, rockOffsetY);
-                        // Rotation inherited from hand!
+                        ctx.rotate(Math.PI);
                         ctx.drawImage(assets.rock, -rockSize / 2, -rockSize / 2, rockSize, rockSize);
                         ctx.restore();
                     }
@@ -2219,12 +2224,9 @@ function draw() {
                 );
                 
                 if (player.inventory && player.inventory[player.equippedSlot] === 'rock') {
-                    let rockSize = player.handSize * 1.1;
-                    let rockOffsetX = -6; // Adjusted up and left
-                    let rockOffsetY = -10;
+                    let rockSize = player.handSize * 1.4;
                     ctx.save();
-                    ctx.translate(rockOffsetX, rockOffsetY);
-                    // Rotation inherited from hand seamlessly!
+                    ctx.rotate(Math.PI);
                     ctx.drawImage(assets.rock, -rockSize / 2, -rockSize / 2, rockSize, rockSize);
                     ctx.restore();
                 }
