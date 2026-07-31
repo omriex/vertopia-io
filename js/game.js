@@ -11,12 +11,14 @@ setInterval(async () => {
         let res = await fetch('https://raw.githubusercontent.com/omriex/vertopia-io/main/index.html?t=' + Date.now(), { cache: 'no-store' });
         let text = await res.text();
         let match = text.match(/<div class="version-text">(v[\d\.]+)<\/div>/i); 
+            
         if (match && match[1].toLowerCase() !== CURRENT_VERSION.toLowerCase()) {
             window.location.reload(true);
         }
-    } catch (e) {}
+    } catch (e) {
+        console.error("Auto-updater encountered an error:", e);
+    }
 }, 10000);
-
 
         const firebaseConfig = {
             apiKey: "AIzaSyDcx4fwRtS_ebOZPKqYvniR_4W-uEt0zi4",
