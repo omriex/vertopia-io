@@ -10,7 +10,7 @@
             try {
                 let res = await fetch('https://raw.githubusercontent.com/omriex/vertopia-io/main/index.html?t=' + Date.now(), { cache: 'no-store' });
                 let text = await res.text();
-                let match = text.match(/<div class="version-text">(v[\d\.]+)<\/div>/);
+                let match = text.match(/<div class="version-text">(v[\d\.]+)<\/div>/i); 
                 if (match && match[1] !== CURRENT_VERSION) {
                     window.location.reload(true);
                 }
