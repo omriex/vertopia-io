@@ -6,16 +6,17 @@
         const versionEl = document.querySelector('.version-text');
         const CURRENT_VERSION = versionEl ? versionEl.innerText.trim() : 'v1.0.0';
 
-        setInterval(async () => {
-            try {
-                let res = await fetch('https://raw.githubusercontent.com/omriex/vertopia-io/main/index.html?t=' + Date.now(), { cache: 'no-store' });
-                let text = await res.text();
-                let match = text.match(/<div class="version-text">(v[\d\.]+)<\/div>/i); 
-                if (match && match[1] !== CURRENT_VERSION) {
-                    window.location.reload(true);
-                }
-            } catch (e) {}
-        }, 10000);
+setInterval(async () => {
+    try {
+        let res = await fetch('https://raw.githubusercontent.com/omriex/vertopia-io/main/index.html?t=' + Date.now(), { cache: 'no-store' });
+        let text = await res.text();
+        let match = text.match(/<div class="version-text">(v[\d\.]+)<\/div>/i); 
+        if (match && match[1].toLowerCase() !== CURRENT_VERSION.toLowerCase()) {
+            window.location.reload(true);
+        }
+    } catch (e) {}
+}, 10000);
+
 
         const firebaseConfig = {
             apiKey: "AIzaSyDcx4fwRtS_ebOZPKqYvniR_4W-uEt0zi4",
