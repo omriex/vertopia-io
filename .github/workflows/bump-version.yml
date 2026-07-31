@@ -1,0 +1,37 @@
+name: Bump Build Version
+
+on:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - '.github/workflows/**'
+
+permissions:
+  contents: write
+
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Bump Version
+        run: |
+          OLD_VER=$(sed -n -E 's/.*<div class="version-text">([vV][0-9.]+).*/\1/p' index.html | head -n 1 | tr -d '\r')
+          CLEAN_VER=$(echo "$OLD_VER" | sed -E 's/[vV]//g')
+          MAJOR=$(echo "$CLEAN_VER" | cut -d. -f1)
+          MINOR=$(echo "$CLEAN_VER" | cut -d. -f2)
+          BUILD=$(echo "$CLEAN_VER" | cut -d. -f3)
+          NEW_BUILD=$((BUILD + 1))
+          NEW_VER="V$MAJOR.$MINOR.$NEW_BUILD"
+          sed -i "s/<div class=\"version-text\">$OLD_VER<\/div>/<div class=\"version-text\">$NEW_VER<\/div>/g" index.html
+          echo "NEW_VER=$NEW_VER" >> $GITHUB_ENV
+
+      - name: Commit and push
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add index.html
+          git commit -m "bump build to ${{ env.NEW_VER }} [skip ci]" || echo "no changes"
+          git push
